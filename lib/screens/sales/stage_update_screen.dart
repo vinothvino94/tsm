@@ -62,279 +62,6 @@ class _StageUpdateScreenState extends State<StageUpdateScreen> {
   }
 
   @override
-  Widget _build(BuildContext context) {
-    final isEditing = widget.stagelistData != null && !widget.isReadOnly!;
-    final isViewOnly = widget.isReadOnly == true;
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Stage Update'),
-      ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final minWidth =
-              constraints.maxWidth < 600 ? 600.0 : constraints.maxWidth;
-
-          return SingleChildScrollView(
-            controller: _scrollController,
-            physics: const AlwaysScrollableScrollPhysics(),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              physics: const ClampingScrollPhysics(),
-              child: Container(
-                width: minWidth,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      ///Customer Name & Project Name
-                      Row(
-                        children: [
-                          Expanded(
-                            child: isViewOnly
-                                ? TextFormField(
-                                    controller: customerController,
-                                    decoration:
-                                        _inputDecoration("Customer Name"),
-                                    readOnly: true,
-                                    enabled: false,
-                                  )
-                                : Autocomplete<ChecklistCustomer>(
-                                    displayStringForOption: (option) =>
-                                        "${option.customerId} - ${option.companyName}",
-                                    optionsBuilder:
-                                        (TextEditingValue textEditingValue) {
-                                      if (textEditingValue.text.isEmpty) {
-                                        return customerList;
-                                      }
-                                      return customerList.where((customer) {
-                                        return customer.companyName
-                                                .toLowerCase()
-                                                .contains(textEditingValue.text
-                                                    .toLowerCase()) ||
-                                            customer.customerId
-                                                .toString()
-                                                .contains(
-                                                    textEditingValue.text);
-                                      });
-                                    },
-                                    onSelected: (ChecklistCustomer selection) {
-                                      debugPrint(
-                                          'Selected Customer: ${selection.companyName}, ID: ${selection.customerId}');
-
-                                      customerController.text =
-                                          "${selection.customerId} - ${selection.companyName}";
-
-                                      setState(() {
-                                        selectedCustomerId =
-                                            selection.customerId;
-                                        selectedProjectId = null;
-                                        siteController.clear();
-                                      });
-
-                                      loadProjects(selection
-                                          .customerId); // Pass the parsed customer ID
-                                    },
-                                    fieldViewBuilder: (
-                                      context,
-                                      controller,
-                                      focusNode,
-                                      onFieldSubmitted,
-                                    ) {
-                                      controller.text = customerController.text;
-                                      return TextFormField(
-                                        controller: controller,
-                                        focusNode: focusNode,
-                                        decoration: InputDecoration(
-                                          labelText: "Customer Name",
-                                          hintText: "Search Customer",
-                                          border: const OutlineInputBorder(),
-                                          suffixIcon: controller.text.isNotEmpty
-                                              ? IconButton(
-                                                  icon: const Icon(Icons.clear),
-                                                  onPressed: () {
-                                                    controller.clear();
-                                                    customerController.clear();
-                                                    setState(() {
-                                                      selectedCustomerId = null;
-                                                      selectedProjectId = null;
-                                                      siteController.clear();
-                                                    });
-                                                  },
-                                                )
-                                              : null,
-                                        ),
-                                        autovalidateMode:
-                                            AutovalidateMode.onUserInteraction,
-                                      );
-                                    },
-                                  ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: isViewOnly
-                                ? TextFormField(
-                                    controller: siteController,
-                                    decoration: _inputDecoration("Site Name"),
-                                    readOnly: true,
-                                    enabled: false,
-                                  )
-                                : Autocomplete<Project>(
-                                    displayStringForOption: (option) =>
-                                        "${option.projectId} - ${option.projectName}",
-                                    optionsBuilder:
-                                        (TextEditingValue textEditingValue) {
-                                      if (textEditingValue.text.isEmpty) {
-                                        return projectList;
-                                      }
-                                      return projectList.where((project) {
-                                        return project.projectName
-                                                .toLowerCase()
-                                                .contains(
-                                                  textEditingValue.text
-                                                      .toLowerCase(),
-                                                ) ||
-                                            project.projectId
-                                                .toString()
-                                                .contains(
-                                                    textEditingValue.text);
-                                      });
-                                    },
-                                    onSelected: (Project selection) {
-                                      siteController.text =
-                                          "${selection.projectId} - ${selection.projectName}";
-                                      setState(() {
-                                        selectedProjectId = selection.projectId;
-                                      });
-                                    },
-                                    fieldViewBuilder: (
-                                      context,
-                                      controller,
-                                      focusNode,
-                                      onFieldSubmitted,
-                                    ) {
-                                      controller.text = siteController.text;
-                                      return TextFormField(
-                                        controller: controller,
-                                        focusNode: focusNode,
-                                        decoration: InputDecoration(
-                                          labelText: "Site Name",
-                                          hintText: "Search Site",
-                                          border: const OutlineInputBorder(),
-                                          suffixIcon: controller.text.isNotEmpty
-                                              ? IconButton(
-                                                  icon: const Icon(Icons.clear),
-                                                  onPressed: () {
-                                                    controller.clear();
-                                                    siteController.clear();
-                                                    setState(() {
-                                                      selectedProjectId = null;
-                                                    });
-                                                  },
-                                                )
-                                              : null,
-                                        ),
-                                        autovalidateMode:
-                                            AutovalidateMode.onUserInteraction,
-                                      );
-                                    },
-                                  ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-
-                      _buildStageInputSection(),
-
-                      // 🔹 TABLE VIEW
-                      Platform.isAndroid
-                          ? SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: _buildStageTable(),
-                            )
-                          : _buildStageTable(),
-                      const SizedBox(height: 16),
-
-                      ///Submit & Update Button
-                      if (!isViewOnly) ...[
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Expanded(
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      AppColors.primary,
-                                      AppColors.primaryDark
-                                    ],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  ),
-                                  borderRadius: BorderRadius.circular(10),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black26,
-                                      blurRadius: 5,
-                                      offset: const Offset(2, 4),
-                                    ),
-                                  ],
-                                ),
-                                child: InkWell(
-                                  onTap: isSubmitting
-                                      ? null
-                                      : () async {
-                                          if (_formKey.currentState!
-                                              .validate()) {
-                                            await insertSalesStagelist();
-                                          }
-                                        },
-                                  borderRadius: BorderRadius.circular(10),
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 15),
-                                    child: Center(
-                                      child: isSubmitting
-                                          ? const SizedBox(
-                                              width: 20,
-                                              height: 20,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                                valueColor:
-                                                    AlwaysStoppedAnimation<
-                                                        Color>(Colors.white),
-                                              ),
-                                            )
-                                          : Text(
-                                              isEditing ? 'Update' : 'Submit',
-                                              style: const TextStyle(
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 16,
-                                              ),
-                                            ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  @override
   Widget build(BuildContext context) {
     final isEditing = widget.stagelistData != null && !widget.isReadOnly!;
     final isViewOnly = widget.isReadOnly == true;
@@ -787,14 +514,7 @@ class _StageUpdateScreenState extends State<StageUpdateScreen> {
         return;
       }
 
-      // Debug print
-      print("========== SENDING DATA TO API ==========");
-      print("Total stages: ${stagesToSend.length}");
-      for (int i = 0; i < stagesToSend.length; i++) {
-        print("Stage ${i + 1}:");
-        print("  STAGEID: ${stagesToSend[i]["STAGEID"]}");
-        print("  STAGENAME: ${stagesToSend[i]["STAGENAME"]}");
-      }
+      for (int i = 0; i < stagesToSend.length; i++) {}
       print("=========================================");
 
       final response = await http.post(
@@ -849,15 +569,11 @@ class _StageUpdateScreenState extends State<StageUpdateScreen> {
   }
 
   Widget _buildStageTable() {
-    print("========== _buildStageTable RENDERED ==========");
-    print("Stage list length: ${stageList.length}");
     for (int i = 0; i < stageList.length; i++) {
       print(
           "  Stage ${i + 1}: ID=${stageList[i].stageid}, Name=${stageList[i].stagename}");
     }
-    print("==============================================");
 
-    // Only show "No stages added" if submit has been attempted AND list is empty
     if (stageList.isEmpty && _hasAttemptedSubmit) {
       return const Center(
         child: Padding(
@@ -899,19 +615,10 @@ class _StageUpdateScreenState extends State<StageUpdateScreen> {
                     IconButton(
                       icon: const Icon(Icons.edit, color: Colors.blue),
                       onPressed: () {
-                        print("Edit button pressed for stage index: $index");
-                        print("  - Stage ID: ${item.stageid}");
-                        print("  - Stage Name: ${item.stagename}");
-
-                        // Populate the form fields with the selected stage data
                         setState(() {
                           selectedstageId = int.tryParse(item.stageid ?? '0');
                           stageController.text = item.stagename ?? '';
-
-                          // Remove the original item from the list (for update)
                           stageList.removeAt(index);
-
-                          // Reset submit attempt flag when editing
                           _hasAttemptedSubmit = false;
                         });
 
@@ -929,15 +636,9 @@ class _StageUpdateScreenState extends State<StageUpdateScreen> {
                     IconButton(
                       icon: const Icon(Icons.delete, color: Colors.red),
                       onPressed: () {
-                        print("Delete button pressed for stage index: $index");
-                        print("  - Stage ID: ${item.stageid}");
-                        print("  - Stage Name: ${item.stagename}");
                         setState(() {
                           stageList.removeAt(index);
-                          print(
-                              "Stage removed. Remaining stages: ${stageList.length}");
 
-                          // Reset submit attempt flag when deleting
                           if (stageList.isEmpty) {
                             _hasAttemptedSubmit = false;
                           }
@@ -964,13 +665,6 @@ class _StageUpdateScreenState extends State<StageUpdateScreen> {
   }
 
   Widget _buildStageInputSection() {
-    print("========== _buildStageInputSection RENDERED ==========");
-    print("Current selectedstageId: $selectedstageId");
-    print("Current stageController text: ${stageController.text}");
-    print("Current stageList length: ${stageList.length}");
-    print("Available stages count: ${availableStagesList.length}");
-    print("====================================================");
-
     final isViewOnly = widget.isReadOnly == true;
 
     return Column(
@@ -1221,7 +915,6 @@ class _StageUpdateScreenState extends State<StageUpdateScreen> {
     }
   }
 }
-
 /*Widget buildStageInputSection() {
     print("========== _buildStageInputSection RENDERED ==========");
     print("Current selectedstageId: $selectedstageId");
@@ -1363,4 +1056,277 @@ class _StageUpdateScreenState extends State<StageUpdateScreen> {
           ),
       ],
     );
-  }*/
+  }
+
+@override
+Widget _build(BuildContext context) {
+  final isEditing = widget.stagelistData != null && !widget.isReadOnly!;
+  final isViewOnly = widget.isReadOnly == true;
+  return Scaffold(
+    appBar: AppBar(
+      title: const Text('Stage Update'),
+    ),
+    body: LayoutBuilder(
+      builder: (context, constraints) {
+        final minWidth =
+        constraints.maxWidth < 600 ? 600.0 : constraints.maxWidth;
+
+        return SingleChildScrollView(
+          controller: _scrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const ClampingScrollPhysics(),
+            child: Container(
+              width: minWidth,
+              padding:
+              const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ///Customer Name & Project Name
+                    Row(
+                      children: [
+                        Expanded(
+                          child: isViewOnly
+                              ? TextFormField(
+                            controller: customerController,
+                            decoration:
+                            _inputDecoration("Customer Name"),
+                            readOnly: true,
+                            enabled: false,
+                          )
+                              : Autocomplete<ChecklistCustomer>(
+                            displayStringForOption: (option) =>
+                            "${option.customerId} - ${option.companyName}",
+                            optionsBuilder:
+                                (TextEditingValue textEditingValue) {
+                              if (textEditingValue.text.isEmpty) {
+                                return customerList;
+                              }
+                              return customerList.where((customer) {
+                                return customer.companyName
+                                    .toLowerCase()
+                                    .contains(textEditingValue.text
+                                    .toLowerCase()) ||
+                                    customer.customerId
+                                        .toString()
+                                        .contains(
+                                        textEditingValue.text);
+                              });
+                            },
+                            onSelected: (ChecklistCustomer selection) {
+                              debugPrint(
+                                  'Selected Customer: ${selection.companyName}, ID: ${selection.customerId}');
+
+                              customerController.text =
+                              "${selection.customerId} - ${selection.companyName}";
+
+                              setState(() {
+                                selectedCustomerId =
+                                    selection.customerId;
+                                selectedProjectId = null;
+                                siteController.clear();
+                              });
+
+                              loadProjects(selection
+                                  .customerId); // Pass the parsed customer ID
+                            },
+                            fieldViewBuilder: (
+                                context,
+                                controller,
+                                focusNode,
+                                onFieldSubmitted,
+                                ) {
+                              controller.text = customerController.text;
+                              return TextFormField(
+                                controller: controller,
+                                focusNode: focusNode,
+                                decoration: InputDecoration(
+                                  labelText: "Customer Name",
+                                  hintText: "Search Customer",
+                                  border: const OutlineInputBorder(),
+                                  suffixIcon: controller.text.isNotEmpty
+                                      ? IconButton(
+                                    icon: const Icon(Icons.clear),
+                                    onPressed: () {
+                                      controller.clear();
+                                      customerController.clear();
+                                      setState(() {
+                                        selectedCustomerId = null;
+                                        selectedProjectId = null;
+                                        siteController.clear();
+                                      });
+                                    },
+                                  )
+                                      : null,
+                                ),
+                                autovalidateMode:
+                                AutovalidateMode.onUserInteraction,
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: isViewOnly
+                              ? TextFormField(
+                            controller: siteController,
+                            decoration: _inputDecoration("Site Name"),
+                            readOnly: true,
+                            enabled: false,
+                          )
+                              : Autocomplete<Project>(
+                            displayStringForOption: (option) =>
+                            "${option.projectId} - ${option.projectName}",
+                            optionsBuilder:
+                                (TextEditingValue textEditingValue) {
+                              if (textEditingValue.text.isEmpty) {
+                                return projectList;
+                              }
+                              return projectList.where((project) {
+                                return project.projectName
+                                    .toLowerCase()
+                                    .contains(
+                                  textEditingValue.text
+                                      .toLowerCase(),
+                                ) ||
+                                    project.projectId
+                                        .toString()
+                                        .contains(
+                                        textEditingValue.text);
+                              });
+                            },
+                            onSelected: (Project selection) {
+                              siteController.text =
+                              "${selection.projectId} - ${selection.projectName}";
+                              setState(() {
+                                selectedProjectId = selection.projectId;
+                              });
+                            },
+                            fieldViewBuilder: (
+                                context,
+                                controller,
+                                focusNode,
+                                onFieldSubmitted,
+                                ) {
+                              controller.text = siteController.text;
+                              return TextFormField(
+                                controller: controller,
+                                focusNode: focusNode,
+                                decoration: InputDecoration(
+                                  labelText: "Site Name",
+                                  hintText: "Search Site",
+                                  border: const OutlineInputBorder(),
+                                  suffixIcon: controller.text.isNotEmpty
+                                      ? IconButton(
+                                    icon: const Icon(Icons.clear),
+                                    onPressed: () {
+                                      controller.clear();
+                                      siteController.clear();
+                                      setState(() {
+                                        selectedProjectId = null;
+                                      });
+                                    },
+                                  )
+                                      : null,
+                                ),
+                                autovalidateMode:
+                                AutovalidateMode.onUserInteraction,
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    _buildStageInputSection(),
+
+                    // 🔹 TABLE VIEW
+                    Platform.isAndroid
+                        ? SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: _buildStageTable(),
+                    )
+                        : _buildStageTable(),
+                    const SizedBox(height: 16),
+
+                    ///Submit & Update Button
+                    if (!isViewOnly) ...[
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Expanded(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    AppColors.primary,
+                                    AppColors.primaryDark
+                                  ],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                borderRadius: BorderRadius.circular(10),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black26,
+                                    blurRadius: 5,
+                                    offset: const Offset(2, 4),
+                                  ),
+                                ],
+                              ),
+                              child: InkWell(
+                                onTap: isSubmitting
+                                    ? null
+                                    : () async {
+                                  if (_formKey.currentState!
+                                      .validate()) {
+                                    await insertSalesStagelist();
+                                  }
+                                },
+                                borderRadius: BorderRadius.circular(10),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 15),
+                                  child: Center(
+                                    child: isSubmitting
+                                        ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor:
+                                        AlwaysStoppedAnimation<
+                                            Color>(Colors.white),
+                                      ),
+                                    )
+                                        : Text(
+                                      isEditing ? 'Update' : 'Submit',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    ),
+  );
+}*/
