@@ -1,9 +1,12 @@
 import 'dart:convert';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
+import 'package:open_file/open_file.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../api/api_utils.dart';
 import '../../colors/app_colors.dart';
 import '../../models/project.dart';
@@ -391,6 +394,24 @@ class _ViewChecklistScreenState extends State<ViewChecklistScreen> {
                   // Action Icons Row
                   Row(
                     children: [
+                      // Approve Icon
+                      IconButton(
+                        icon: const Icon(
+                          Icons.check_circle,
+                          color: Colors.green,
+                          size: 20,
+                        ),
+                        tooltip: firstEntry.chkappstatus == 'Approved'
+                            ? 'Already Approved'
+                            : 'Approve',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        onPressed: firstEntry.chkappstatus == 'Approved'
+                            ? null // Disable button if already approved
+                            : () => _showApproveConfirmationDialog(chklNo),
+                      ),
+                      const SizedBox(width: 8),
+
                       // View Icon
                       IconButton(
                         onPressed: () {
@@ -489,7 +510,22 @@ class _ViewChecklistScreenState extends State<ViewChecklistScreen> {
                         tooltip: 'Download PDF',
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
-                      )
+                      ),
+                      const SizedBox(width: 8),
+
+                      // Download Icon
+                      IconButton(
+                        onPressed: () async {
+                          await ChecklistDownloadService.downloadChecklistFiles(
+                            context: context,
+                            chklNo: chklNo,
+                            chkfname: firstEntry.chkfname,
+                          );
+                        },
+                        icon: const Icon(Icons.download,
+                            size: 20, color: Colors.purpleAccent),
+                        tooltip: 'Download Attachments',
+                      ),
                     ],
                   ),
                 ],
@@ -719,234 +755,92 @@ class _ViewChecklistScreenState extends State<ViewChecklistScreen> {
         ? '$empCode - ${employee.empName}'
         : empCode.toString();
   }
-}
 
-class QuotationAgreementPdfService {
-  /*static Future<void> _generateAndShareChecklistPdf({
-    required BuildContext context,
-    required List<SalesChecklistModel> checklistEntries,
-    required int chklNo,
-  }) async {
-    if (checklistEntries.isEmpty) {
-      _showError(context, 'No checklist data available!');
-      return;
-    }
-
-    // Get header data from first entry
-    final firstEntry = checklistEntries.first;
-    final clientName = firstEntry.clientname ?? 'Not specified';
-    final projectName = firstEntry.projectname ?? 'Not specified';
-    final verifiedBy = firstEntry.verifiedby ?? 'Not specified';
-    final reviewedBy = firstEntry.reviewedby ?? 'Not specified';
-
-    // Create remarks map from the first entry (since all entries in group have same data)
-    final remarksMap = _createRemarksMap(firstEntry);
-
-    // Load logo (optional - remove if not needed)
-    Uint8List? logoBytes;
+  Future<void> _approveChecklist(int chklNo) async {
     try {
-      final ByteData bytes =
-          await rootBundle.load('assets/images/Approved Logo.png');
-      logoBytes = bytes.buffer.asUint8List();
-    } catch (e) {
-      print('Logo not found: $e');
-    }
+      final requestBody = {
+        "CHKLNO": chklNo,
+        "CHKAPPSTATUS": "Approved",
+        "CHKAPPUSER": empCode,
+        "CHKAPPDATE": DateTime.now().toIso8601String(),
+      };
 
-    final String formattedDate = _getFileSafeDateTimeFormatted();
-    final String fileName =
-        "${projectName.toLowerCase().replaceAll(' ', '_')}_quotation_checklist_$formattedDate.pdf";
+      print("APPROVE API URL : ${ApiUtils.getUri('ApproveSalesChecklist')}");
+      print("APPROVE REQUEST BODY : ${jsonEncode(requestBody)}");
 
-    final pdf = pw.Document();
+      final response = await http.post(
+        ApiUtils.getUri('ApproveSalesChecklist'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(requestBody),
+      );
 
-    // Build checklist data for table
-    final List<String> headers = [
-      "S.No",
-      "Checklist for contract signing",
-      "Remarks"
-    ];
-    final List<List<String>> tableData = [];
-    final checklistItems = _getChecklistItems();
+      print("APPROVE STATUS CODE : ${response.statusCode}");
+      print("APPROVE RESPONSE BODY : ${response.body}");
 
-    for (int index = 0; index < checklistItems.length; index++) {
-      final item = checklistItems[index];
-      final remark = remarksMap[item] ?? '';
+      final data = jsonDecode(response.body);
 
-      tableData.add([
-        '${index + 1}',
-        item,
-        remark.isEmpty ? '_________________' : remark,
-      ]);
-    }
-
-    // Column widths
-    final columnWidths = <int, pw.TableColumnWidth>{
-      0: pw.FixedColumnWidth(45), // S.No
-      1: pw.FlexColumnWidth(3), // Checklist Item
-      2: pw.FixedColumnWidth(200), // Remarks
-    };
-
-    // Add page to PDF
-    pdf.addPage(
-      pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(15),
-        footer: (pw.Context context) => _buildFooter(
-          verifiedBy: verifiedBy,
-          reviewedBy: reviewedBy,
-          chklNo: chklNo,
-          context: context,
-        ),
-        build: (pw.Context context) => [
-          // Header with logo
-           _buildHeader(
-            logoBytes: logoBytes,
-            projectName: projectName,
-            clientName: clientName,
-            verifiedBy: verifiedBy,
-            reviewedBy: reviewedBy,
-            chklNo: chklNo,
+      if (data['Success'] == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Checklist #$chklNo approved successfully'),
+            backgroundColor: Colors.green,
           ),
-          pw.SizedBox(height: 15),
-
-          // Title
-          _buildTitle(),
-          pw.SizedBox(height: 15),
-
-          // Client Info Table
-          _buildClientInfoTable(
-            clientName: clientName,
-            projectName: projectName,
-            verifiedBy: verifiedBy,
-            reviewedBy: reviewedBy,
-            chklNo: chklNo,
-          ),
-          pw.SizedBox(height: 15),
-
-          // Checklist Table
-          pw.TableHelper.fromTextArray(
-            headers: headers,
-            data: tableData.map((row) {
-              // Check if this is a section header (starts with '---')
-              if (row[1].startsWith('---')) {
-                // Return with special styling - you can customize this
-                return [
-                  row[0],
-                  row[1],
-                  row[2],
-                ];
-              }
-              return row;
-            }).toList(),
-            headerDecoration: pw.BoxDecoration(color: PdfColors.grey300),
-            headerStyle:
-                pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
-            headerAlignment: pw.Alignment.center,
-            cellStyle: pw.TextStyle(fontSize: 8),
-            cellAlignment: pw.Alignment.centerLeft,
-            border: pw.TableBorder.all(color: PdfColors.grey),
-            columnWidths: columnWidths,
-          ),
-        ],
-      ),
-    );
-
-    // === Save & Share Logic ===
-    final pdfBytes = await pdf.save();
-
-    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-      final uniquePath = await _getUniqueFilePath(fileName);
-      if (uniquePath != null) {
-        final file = File(uniquePath);
-        await file.writeAsBytes(pdfBytes);
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("✅ PDF saved to:\n${file.path}")),
-          );
-        }
+        );
+        await _fetchSaleschecklistEntries(); // Refresh list
       } else {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text("❌ Could not access Downloads folder")),
-          );
-        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(data['Message'] ?? 'Failed to approve checklist'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
-    } else {
-      final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/$fileName');
-      await file.writeAsBytes(pdfBytes);
-      if (context.mounted) {
-        await Share.shareXFiles([XFile(file.path)], text: projectName);
-      }
+    } catch (e) {
+      print("APPROVE EXCEPTION ERROR : $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error approving checklist: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
-  static pw.Widget _buildHeader({
-    required Uint8List? logoBytes,
-    required String projectName,
-    required String clientName,
-    required String verifiedBy,
-    required String reviewedBy,
-    required int chklNo,
-  }) {
-    return pw.Container(
-      decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: PdfColors.grey400, width: 1.5),
-      ),
-      padding: const pw.EdgeInsets.all(8),
-      child: pw.Row(
-        crossAxisAlignment: pw.CrossAxisAlignment.center,
-        children: [
-          // Logo section
-          if (logoBytes != null)
-            pw.Container(
-              padding: const pw.EdgeInsets.all(5),
-              width: 60,
-              height: 60,
-              alignment: pw.Alignment.centerLeft,
-              child: pw.Image(
-                pw.MemoryImage(logoBytes),
-                width: 50,
-                height: 50,
-                fit: pw.BoxFit.contain,
-              ),
-            ),
-          pw.SizedBox(width: 10),
-
-          // Title section
-          pw.Expanded(
-            child: pw.Column(
-              mainAxisAlignment: pw.MainAxisAlignment.center,
-              crossAxisAlignment: pw.CrossAxisAlignment.center,
-              children: [
-                pw.Text(
-                  "QUOTATION / AGREEMENT CHECKLIST",
-                  textAlign: pw.TextAlign.center,
-                  style: pw.TextStyle(
-                    fontSize: 16,
-                    fontWeight: pw.FontWeight.bold,
-                  ),
-                ),
-                pw.SizedBox(height: 4),
-                pw.Text(
-                  "Project: $projectName",
-                  textAlign: pw.TextAlign.center,
-                  style: pw.TextStyle(fontSize: 10),
-                ),
-                pw.SizedBox(height: 2),
-                pw.Text(
-                  "Checklist No: $chklNo",
-                  textAlign: pw.TextAlign.center,
-                  style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
-                ),
-              ],
-            ),
+  Future<void> _showApproveConfirmationDialog(int chklNo) async {
+    return showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.green),
+              SizedBox(width: 8),
+              Text('Approve Checklist'),
+            ],
           ),
-        ],
-      ),
+          content: Text(
+              'Are you sure you want to approve Checklist #$chklNo?\n\nThis action cannot be undone.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _approveChecklist(chklNo);
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.green),
+              child: const Text('Approve'),
+            ),
+          ],
+        );
+      },
     );
-  }*/
+  }
+}
 
+class QuotationAgreementPdfService {
   static Future<void> generateAndShareChecklistPdf({
     required BuildContext context,
     required List<SalesChecklistModel> checklistEntries,
@@ -1501,5 +1395,271 @@ class QuotationAgreementPdfService {
         backgroundColor: Colors.red,
       ),
     );
+  }
+}
+
+class ChecklistDownloadService {
+  // Method to get file names from your API
+  static Future<Map<String, dynamic>?> _getChecklistFiles({
+    required int chklNo,
+  }) async {
+    try {
+      final response = await http.post(
+        ApiUtils.getUri('GetChecklistFiles'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({"CHKLNO": chklNo}),
+      );
+
+      print('GetChecklistFiles Response: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['Success'] == true) {
+          return data['Data'];
+        }
+      }
+      return null;
+    } catch (e) {
+      print('Error fetching files: $e');
+      return null;
+    }
+  }
+
+  // Main method to download files
+  static Future<void> downloadChecklistFiles({
+    required BuildContext context,
+    required int chklNo,
+    String? chkfname,
+  }) async {
+    // Show loading
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Getting file information...'),
+        backgroundColor: Colors.blue,
+        duration: Duration(seconds: 1),
+      ),
+    );
+
+    // Get file names if not provided
+    String? fileNamesString = chkfname;
+
+    if (fileNamesString == null || fileNamesString.trim().isEmpty) {
+      final filesData = await _getChecklistFiles(chklNo: chklNo);
+
+      if (filesData == null) {
+        _showNoFilesDialog(context, chklNo);
+        return;
+      }
+
+      fileNamesString = filesData['CHKFNAME'];
+
+      if (fileNamesString == null ||
+          fileNamesString.toString().trim().isEmpty) {
+        _showNoFilesDialog(context, chklNo);
+        return;
+      }
+    }
+
+    final List<String> fileNames =
+        fileNamesString.split(',').map((e) => e.trim()).toList();
+
+    // Request storage permission for Android
+    if (Platform.isAndroid) {
+      final status = await Permission.storage.request();
+      if (!status.isGranted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Storage permission denied'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+    }
+
+    // Show download progress
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Downloading ${fileNames.length} file(s)...'),
+        backgroundColor: Colors.blue,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+
+    final List<String> success = [];
+    final List<String> failed = [];
+
+    // Download each file
+    for (final fileName in fileNames) {
+      try {
+        await _downloadFile(fileName, chklNo);
+        success.add(fileName);
+        print('✓ Downloaded: $fileName');
+      } catch (e) {
+        failed.add(fileName);
+        print('✗ Failed: $fileName - $e');
+      }
+    }
+
+    // Show result
+    _showDownloadResult(context, success, failed);
+  }
+
+  // Download single file using your API
+  static Future<void> _downloadFile(String fileName, int chklNo) async {
+    try {
+      print('Original filename from DB: "$fileName"');
+
+      final response = await http.post(
+        ApiUtils.getUri('DownloadFile'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({"fileName": fileName}),
+      );
+
+      print('Download API Request: fileName = "$fileName"');
+      print('Download API Response Status: ${response.statusCode}');
+      print('Download API Response Body: ${response.body}');
+
+      final data = jsonDecode(response.body);
+
+      if (data['Success'] == true) {
+        // Get the file bytes from Base64
+        String base64String = data['FileBytes'];
+        Uint8List fileBytes = base64Decode(base64String);
+
+        // Save the file
+        String savePath = await _getSavePath(fileName);
+        File file = File(savePath);
+        await file.writeAsBytes(fileBytes);
+
+        print('File saved to: $savePath');
+      } else {
+        throw Exception(data['Message'] ?? 'Download failed');
+      }
+    } catch (e) {
+      throw Exception('Failed to download $fileName: $e');
+    }
+  }
+
+  // Get save path for different platforms
+  static Future<String> _getSavePath(String fileName) async {
+    if (Platform.isAndroid) {
+      // Android: Save to Downloads folder
+      final directory = Directory('/storage/emulated/0/Download');
+      if (!await directory.exists()) {
+        await directory.create(recursive: true);
+      }
+      return '${directory.path}/$fileName';
+    } else if (Platform.isIOS) {
+      // iOS: Save to Documents directory
+      final directory = await getApplicationDocumentsDirectory();
+      return '${directory.path}/$fileName';
+    } else if (Platform.isWindows) {
+      // Windows: Save to Downloads folder
+      final downloadsPath = '${Platform.environment['USERPROFILE']}\\Downloads';
+      final directory = Directory(downloadsPath);
+      if (!await directory.exists()) {
+        await directory.create(recursive: true);
+      }
+      return '$downloadsPath\\$fileName';
+    } else if (Platform.isMacOS) {
+      // MacOS: Save to Downloads folder
+      final downloadsPath = '${Platform.environment['HOME']}/Downloads';
+      final directory = Directory(downloadsPath);
+      if (!await directory.exists()) {
+        await directory.create(recursive: true);
+      }
+      return '$downloadsPath/$fileName';
+    } else {
+      // Linux or other: Save to current directory
+      final directory = Directory('./downloads');
+      if (!await directory.exists()) {
+        await directory.create(recursive: true);
+      }
+      return '${directory.path}/$fileName';
+    }
+  }
+
+  // Show dialog when no files exist
+  static void _showNoFilesDialog(BuildContext context, int chklNo) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.info_outline, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('No Attachments'),
+          ],
+        ),
+        content: Text(
+          'Checklist #$chklNo has no attached files.\n\n'
+          'To add files, edit the checklist and upload attachments.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Show download result
+  static void _showDownloadResult(
+    BuildContext context,
+    List<String> success,
+    List<String> failed,
+  ) {
+    if (success.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('❌ No files were downloaded'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 3),
+        ),
+      );
+    } else if (failed.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('✅ ${success.length} file(s) downloaded successfully'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: 'OPEN FOLDER',
+            onPressed: () async {
+              String folderPath;
+              if (Platform.isWindows) {
+                folderPath =
+                    '${Platform.environment['USERPROFILE']}\\Downloads';
+              } else if (Platform.isAndroid) {
+                folderPath = '/storage/emulated/0/Download';
+              } else if (Platform.isIOS) {
+                final directory = await getApplicationDocumentsDirectory();
+                folderPath = directory.path;
+              } else if (Platform.isMacOS) {
+                folderPath = '${Platform.environment['HOME']}/Downloads';
+              } else {
+                folderPath = './downloads';
+              }
+
+              // Open the folder
+              await OpenFile.open(folderPath);
+            },
+          ),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '⚠️ ${success.length} downloaded, ${failed.length} failed: ${failed.join(", ")}',
+          ),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    }
   }
 }

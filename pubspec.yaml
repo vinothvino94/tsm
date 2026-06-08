@@ -57,6 +57,9 @@ dependencies:
   confetti: ^0.7.0
   fl_chart: ^0.66.0
   syncfusion_flutter_pdf: ^28.2.12
+  file_picker: ^5.3.3
+  crop_your_image: ^0.7.4
+  flutter_pdfview: ^1.2.2
 
 flutter_launcher_icons:
   android: true

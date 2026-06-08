@@ -2,17 +2,22 @@ import 'package:flutter/material.dart';
 
 import '../../widgets/common_menu_screen.dart';
 import 'billing_entry_screen.dart';
+import 'design_entry_screen.dart';
 import 'overallsummaryscreen.dart';
 import 'stage_update_screen.dart';
 
-class Billingmenu extends StatefulWidget {
-  const Billingmenu({super.key});
+class SalesflowMenu extends StatefulWidget {
+  final bool isSuperAdmin;
+  const SalesflowMenu({
+    super.key,
+    this.isSuperAdmin = false,
+  });
 
   @override
-  State<Billingmenu> createState() => _BillingmenuState();
+  State<SalesflowMenu> createState() => _SalesflowMenuState();
 }
 
-class _BillingmenuState extends State<Billingmenu> {
+class _SalesflowMenuState extends State<SalesflowMenu> {
   final List<Map<String, dynamic>> menuItems = [
     {
       'title': 'Stage Update',
@@ -59,7 +64,18 @@ class _BillingmenuState extends State<Billingmenu> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => BillingEntryScreen(),
+            builder: (_) =>
+                BillingEntryScreen(isSuperAdmin: widget.isSuperAdmin),
+          ),
+        );
+        break;
+
+      case 'Design':
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) =>
+                DesignEntryScreen(isSuperAdmin: widget.isSuperAdmin),
           ),
         );
         break;

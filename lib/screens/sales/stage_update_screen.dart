@@ -39,7 +39,7 @@ class _StageUpdateScreenState extends State<StageUpdateScreen> {
   TextEditingController customerController = TextEditingController();
   TextEditingController siteController = TextEditingController();
   TextEditingController stageController = TextEditingController();
-
+  TextEditingController percentageController = TextEditingController();
   List<ChecklistCustomer> customerList = [];
   List<Project> projectList = [];
   int? selectedCustomerId;
@@ -468,19 +468,6 @@ class _StageUpdateScreenState extends State<StageUpdateScreen> {
             break;
           }
         }
-
-        if (!isSequential) {
-          Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content:
-                  Text("⚠️ Stage $missingNumber must be added before saving"),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 3),
-            ),
-          );
-          return;
-        }
       }
 
       // Prepare data for batch insert
@@ -494,6 +481,9 @@ class _StageUpdateScreenState extends State<StageUpdateScreen> {
           "PROJID": selectedProjectId,
           "STAGEID": fullStageName,
           "STAGENAME": stage.stagename,
+          "STAGEPER": stage.stagepercentage != null
+              ? '${stage.stagepercentage! % 1 == 0 ? stage.stagepercentage!.toInt() : stage.stagepercentage}%'
+              : '',
           "ADDUSER": empCode,
         };
       }).toList();
@@ -595,6 +585,7 @@ class _StageUpdateScreenState extends State<StageUpdateScreen> {
       columns: const [
         DataColumn(label: Text('Stage ID')),
         DataColumn(label: Text('Stage Name')),
+        DataColumn(label: Text('Percentage')),
         DataColumn(label: Text('Actions')),
       ],
       rows: List.generate(
@@ -607,6 +598,10 @@ class _StageUpdateScreenState extends State<StageUpdateScreen> {
             cells: [
               DataCell(Text(stageDisplayName)),
               DataCell(Text(item.stagename ?? '')),
+              DataCell(Text(
+                // ← add cell
+                item.stagepercentage != null ? '${item.stagepercentage}%' : '-',
+              )),
               DataCell(
                 Row(
                   mainAxisSize: MainAxisSize.min,
@@ -788,6 +783,49 @@ class _StageUpdateScreenState extends State<StageUpdateScreen> {
                 },
               ),
             ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: TextFormField(
+                controller: percentageController,
+                decoration: InputDecoration(
+                  labelText: "Stage Percentage",
+                  hintText: "Stage Percentage",
+                  border: const OutlineInputBorder(),
+                  suffixStyle: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.black87,
+                  ),
+                  suffixIcon: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(right: 4),
+                        child: Text('%',
+                            style:
+                                TextStyle(fontSize: 16, color: Colors.black87)),
+                      ),
+                      if (percentageController.text.isNotEmpty)
+                        IconButton(
+                          icon: const Icon(Icons.clear, size: 18),
+                          onPressed: () =>
+                              setState(() => percentageController.clear()),
+                          padding: EdgeInsets.zero,
+                          tooltip: 'Clear',
+                        ),
+                    ],
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
+                ),
+                maxLines: null,
+                keyboardType: TextInputType.numberWithOptions(decimal: true),
+                readOnly: isViewOnly,
+                enabled: !isViewOnly,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 16),
@@ -868,12 +906,14 @@ class _StageUpdateScreenState extends State<StageUpdateScreen> {
           projid: selectedProjectId,
           stageid: stageIdValue,
           stagename: customStageName,
+          stagepercentage: double.tryParse(percentageController.text.trim()),
           adduser: empCode,
           adddate: DateTime.now(),
         ),
       );
       selectedstageId = null;
       stageController.clear();
+      percentageController.clear();
     });
 
     ScaffoldMessenger.of(context).showSnackBar(

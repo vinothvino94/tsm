@@ -606,6 +606,17 @@ class SalesChecklistModel {
   String? idlecharges;
   String? thirdpartytests;
 
+  // ── New file fields ──────────────────────────────
+  String?
+      chkfname; // comma-separated saved filenames e.g. "SCL1-1.pdf,SCL1-2.jpg"
+  String? chkftype; // comma-separated file extensions e.g. "pdf,jpg"
+  int? chkfcount; // total number of files
+
+  // ── New approval fields ──────────────────────────
+  String? chkappstatus; // approval status
+  int? chkappuser; // user who approved
+  DateTime? chkappdate; // approval date
+
   String? deleted;
 
   int? adduser;
@@ -666,6 +677,13 @@ class SalesChecklistModel {
     this.exjointreq,
     this.idlecharges,
     this.thirdpartytests,
+    // new
+    this.chkfname,
+    this.chkftype,
+    this.chkfcount,
+    this.chkappstatus,
+    this.chkappuser,
+    this.chkappdate,
     this.deleted,
     this.adduser,
     this.adddate,
@@ -729,6 +747,15 @@ class SalesChecklistModel {
       exjointreq: json['EXJOINTREQ'],
       idlecharges: json['IDLECHARGES'],
       thirdpartytests: json['THIRDPARTYTESTS'],
+      // new
+      chkfname: json['CHKFNAME'],
+      chkftype: json['CHKFTYPE'],
+      chkfcount: json['CHKFCOUNT'],
+      chkappstatus: json['CHKAPPSTATUS'],
+      chkappuser: json['CHKAPPUSER'],
+      chkappdate: json['CHKAPPDATE'] != null
+          ? DateTime.parse(json['CHKAPPDATE'])
+          : null,
       deleted: json['DELETED'],
       adduser: json['ADDUSER'],
       adddate: json['ADDDATE'] != null ? DateTime.parse(json['ADDDATE']) : null,
@@ -790,6 +817,13 @@ class SalesChecklistModel {
       "EXJOINTREQ": exjointreq,
       "IDLECHARGES": idlecharges,
       "THIRDPARTYTESTS": thirdpartytests,
+      // new
+      "CHKFNAME": chkfname,
+      "CHKFTYPE": chkftype,
+      "CHKFCOUNT": chkfcount,
+      "CHKAPPSTATUS": chkappstatus,
+      "CHKAPPUSER": chkappuser,
+      "CHKAPPDATE": chkappdate?.toIso8601String(),
       "DELETED": deleted,
       "ADDUSER": adduser,
       "ADDDATE": adddate?.toIso8601String(),
@@ -801,74 +835,6 @@ class SalesChecklistModel {
   }
 }
 
-/*class SalesStagelistModel {
-  int? bsno;
-  DateTime? bsdate;
-  int? cusid;
-  int? projid;
-  String? stageid; // Changed from int? to String?
-  String? stagename;
-  String? deleted;
-  int? adduser;
-  DateTime? adddate;
-  int? edituser;
-  DateTime? editdate;
-  int? deluser;
-  DateTime? deldate;
-
-  SalesStagelistModel({
-    this.bsno,
-    this.bsdate,
-    this.cusid,
-    this.projid,
-    this.stageid,
-    this.stagename,
-    this.deleted,
-    this.adduser,
-    this.adddate,
-    this.edituser,
-    this.editdate,
-    this.deluser,
-    this.deldate,
-  });
-
-  factory SalesStagelistModel.fromJson(Map<String, dynamic> json) {
-    return SalesStagelistModel(
-      bsno: json['BSNO'],
-      bsdate: json['BSDATE'] != null ? DateTime.parse(json['BSDATE']) : null,
-      cusid: json['CUSID'],
-      projid: json['PROJID'],
-      stageid: json['STAGEID']?.toString(),
-      stagename: json['STAGENAME'],
-      deleted: json['DELETED'],
-      adduser: json['ADDUSER'],
-      adddate: json['ADDDATE'] != null ? DateTime.parse(json['ADDDATE']) : null,
-      edituser: json['EDITUSER'],
-      editdate:
-          json['EDITDATE'] != null ? DateTime.parse(json['EDITDATE']) : null,
-      deluser: json['DELUSER'],
-      deldate: json['DELDATE'] != null ? DateTime.parse(json['DELDATE']) : null,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'BSNO': bsno,
-      'BSDATE': bsdate?.toIso8601String(),
-      'CUSID': cusid,
-      'PROJID': projid,
-      'STAGEID': stageid,
-      'STAGENAME': stagename,
-      'DELETED': deleted,
-      'ADDUSER': adduser,
-      'ADDDATE': adddate?.toIso8601String(),
-      'EDITUSER': edituser,
-      'EDITDATE': editdate?.toIso8601String(),
-      'DELUSER': deluser,
-      'DELDATE': deldate?.toIso8601String(),
-    };
-  }
-}*/
 class SalesStagelistModel {
   final int? bsno;
   final DateTime? bsdate;
@@ -876,6 +842,7 @@ class SalesStagelistModel {
   final int? projid; // Make sure this matches the API field
   final String? stageid;
   final String? stagename;
+  double? stagepercentage;
   final String? deleted;
   int? adduser;
   DateTime? adddate;
@@ -887,6 +854,7 @@ class SalesStagelistModel {
     this.projid,
     this.stageid,
     this.stagename,
+    this.stagepercentage,
     this.deleted,
     this.adduser,
     this.adddate,
@@ -900,156 +868,234 @@ class SalesStagelistModel {
       projid: json['PROJID'],
       stageid: json['STAGEID'],
       stagename: json['STAGENAME'],
+      stagepercentage: json['STAGEPER'] != null
+          ? double.tryParse(json['STAGEPER'].toString())
+          : null,
       deleted: json['DELETED'],
       adduser: json['ADDUSER'],
       adddate: json['ADDDATE'] != null ? DateTime.parse(json['ADDDATE']) : null,
     );
   }
+  Map<String, dynamic> toJson() {
+    return {
+      "CUSID": cusid,
+      "PROJID": projid,
+      "STAGEID": stageid,
+      "STAGENAME": stagename,
+      "STAGEPER": stagepercentage?.toString() ?? '', // ← add
+      "ADDUSER": adduser,
+      "ADDDATE": adddate?.toIso8601String(),
+    };
+  }
+}
+
+class FileUploadModel {
+  final String filename;
+  final String filedata; // base64 string
+
+  FileUploadModel({required this.filename, required this.filedata});
+
+  Map<String, dynamic> toJson() => {
+        'FILENAME': filename,
+        'FILEDATA': filedata,
+      };
 }
 
 class SalesBillingModel {
-  int? sbno;
-  DateTime? sbdt;
-  int? cusid;
-  int? projid;
-  String? stageid;
-  double? amount;
-  String? invno;
-  DateTime? invdt;
-  String? deleted;
-  int? adduser;
-  DateTime? adddate;
-  int? edituser;
-  DateTime? editdate;
-  int? deluser;
-  DateTime? deldate;
+  final int sbno;
+  final int? cusid;
+  final int? projid;
+  final String? stageid;
+  final String? billno;
+  final DateTime? billdate;
+  final String? billdesc;
+  final double? billamnt;
+  final double? gstper;
+  final double? gstamnt;
+  final double? billtotamnt;
+  final double? itper;
+  final double? itamnt;
+  final double? retnper;
+  final double? retnamnt;
+  final double? dedamnt;
+  final double? whamnt;
+  final double? whrlseamnt;
+  final double? recamnt;
+  final DateTime? recdate;
+  final int? adduser;
+  final DateTime? adddate;
+  final int? edituser;
+  final DateTime? editdate;
+  final List<FileUploadModel>? files;
+  final String? billfiles;
+  final String? sbfname; // Add this for existing files
+  final String? sbftype; // Add this for file types
+  final int? sbfcount; // Add this for file count
 
   SalesBillingModel({
-    this.sbno,
-    this.sbdt,
+    required this.sbno,
     this.cusid,
     this.projid,
     this.stageid,
-    this.amount,
-    this.invno,
-    this.invdt,
-    this.deleted,
+    this.billno,
+    this.billdate,
+    this.billdesc,
+    this.billamnt,
+    this.gstper,
+    this.gstamnt,
+    this.billtotamnt,
+    this.itper,
+    this.itamnt,
+    this.retnper,
+    this.retnamnt,
+    this.dedamnt,
+    this.whamnt,
+    this.whrlseamnt,
+    this.recamnt,
+    this.recdate,
     this.adduser,
     this.adddate,
     this.edituser,
     this.editdate,
-    this.deluser,
-    this.deldate,
+    this.files,
+    this.billfiles,
+    this.sbfname,
+    this.sbftype,
+    this.sbfcount,
   });
 
   factory SalesBillingModel.fromJson(Map<String, dynamic> json) {
     return SalesBillingModel(
-      sbno: json['SBNO'],
-      sbdt: json['SBDT'] != null ? DateTime.parse(json['SBDT']) : null,
+      sbno: json['SBNO'] ?? 0,
       cusid: json['CUSID'],
       projid: json['PROJID'],
       stageid: json['STAGEID'],
-      amount:
-          json['AMOUNT'] != null ? (json['AMOUNT'] as num).toDouble() : null,
-      invno: json['INVNO'],
-      invdt: json['INVDT'] != null ? DateTime.parse(json['INVDT']) : null,
-      deleted: json['DELETED'],
+      billno: json['BILLNO'],
+      billdate:
+          json['BILLDATE'] != null ? DateTime.parse(json['BILLDATE']) : null,
+      billdesc: json['BILLDESC'],
+      billamnt: json['BILLAMNT'] != null
+          ? double.tryParse(json['BILLAMNT'].toString())
+          : null,
+      gstper: json['GSTPER'] != null
+          ? double.tryParse(json['GSTPER'].toString())
+          : null,
+      gstamnt: json['GSTAMNT'] != null
+          ? double.tryParse(json['GSTAMNT'].toString())
+          : null,
+      billtotamnt: json['BILLTOTAMNT'] != null
+          ? double.tryParse(json['BILLTOTAMNT'].toString())
+          : null,
+      itper: json['ITPER'] != null
+          ? double.tryParse(json['ITPER'].toString())
+          : null,
+      itamnt: json['ITAMNT'] != null
+          ? double.tryParse(json['ITAMNT'].toString())
+          : null,
+      retnper: json['RETNPER'] != null
+          ? double.tryParse(json['RETNPER'].toString())
+          : null,
+      retnamnt: json['RETNAMNT'] != null
+          ? double.tryParse(json['RETNAMNT'].toString())
+          : null,
+      dedamnt: json['DEDAMNT'] != null
+          ? double.tryParse(json['DEDAMNT'].toString())
+          : null,
+      whamnt: json['WHAMNT'] != null
+          ? double.tryParse(json['WHAMNT'].toString())
+          : null,
+      whrlseamnt: json['WHRLSEAMNT'] != null
+          ? double.tryParse(json['WHRLSEAMNT'].toString())
+          : null,
+      recamnt: json['RECAMNT'] != null
+          ? double.tryParse(json['RECAMNT'].toString())
+          : null,
+      billfiles: json['BILLFILES'],
+      sbfname: json['SBFNAME'],
+      sbftype: json['SBFTYPE'],
+      sbfcount: json['SBFCOUNT'],
+      recdate: json['RECDATE'] != null ? DateTime.parse(json['RECDATE']) : null,
       adduser: json['ADDUSER'],
       adddate: json['ADDDATE'] != null ? DateTime.parse(json['ADDDATE']) : null,
       edituser: json['EDITUSER'],
       editdate:
           json['EDITDATE'] != null ? DateTime.parse(json['EDITDATE']) : null,
-      deluser: json['DELUSER'],
-      deldate: json['DELDATE'] != null ? DateTime.parse(json['DELDATE']) : null,
     );
   }
 
-  Map<String, dynamic> toJson() {
-    return {
-      'SBNO': sbno,
-      'SBDT': sbdt?.toIso8601String(),
-      'CUSID': cusid,
-      'PROJID': projid,
-      'STAGEID': stageid,
-      'AMOUNT': amount,
-      'INVNO': invno,
-      'INVDT': invdt?.toIso8601String(),
-      'DELETED': deleted,
-      'ADDUSER': adduser,
-      'ADDDATE': adddate?.toIso8601String(),
-      'EDITUSER': edituser,
-      'EDITDATE': editdate?.toIso8601String(),
-      'DELUSER': deluser,
-      'DELDATE': deldate?.toIso8601String(),
-    };
-  }
+  Map<String, dynamic> toJson() => {
+        'SBNO': sbno,
+        'CUSID': cusid,
+        'PROJID': projid,
+        'STAGEID': stageid,
+        'BILLNO': billno,
+        'BILLDATE': billdate?.toIso8601String(),
+        'BILLDESC': billdesc,
+        'BILLAMNT': billamnt,
+        'GSTPER': gstper,
+        'GSTAMNT': gstamnt,
+        'BILLTOTAMNT': billtotamnt,
+        'ITPER': itper,
+        'ITAMNT': itamnt,
+        'RETNPER': retnper,
+        'RETNAMNT': retnamnt,
+        'DEDAMNT': dedamnt,
+        'WHAMNT': whamnt,
+        'WHRLSEAMNT': whrlseamnt,
+        'RECAMNT': recamnt,
+        'RECDATE': recdate?.toIso8601String(),
+        'ADDUSER': adduser,
+        'ADDDATE': adddate,
+        'EDITUSER': edituser,
+        'EDITDATE': editdate,
+        'FILES': files?.map((f) => f.toJson()).toList(),
+        'SBFNAME': sbfname,
+        'SBFTYPE': sbftype,
+        'SBFCOUNT': sbfcount,
+      };
 }
 
-/*class SalesBillingSummaryModel {
-  final String? projectId;
-  final String? customerId;
-  final String projectName;
-  final double woValueInclGst;
-  final double billed;
-  final double balanceAmnt;
-
-  SalesBillingSummaryModel({
-    this.projectId,
-    this.customerId,
-    required this.projectName,
-    required this.woValueInclGst,
-    required this.billed,
-    required this.balanceAmnt,
-  });
-
-  factory SalesBillingSummaryModel.fromJson(Map<String, dynamic> json) {
-    return SalesBillingSummaryModel(
-      projectId: json['PROJECTID']?.toString() ??
-          json['ProjectId']?.toString() ??
-          json['projectId']?.toString(),
-      customerId: json['CUSTOMERID']?.toString() ??
-          json['CustomerId']?.toString() ??
-          json['customerId']?.toString() ??
-          // Try to extract from project name if needed
-          _extractCustomerIdFromProjectName(json['PROJECTNAME']),
-      projectName: json['PROJECTNAME'] ?? '',
-      woValueInclGst: (json['WOVALUEINCLGST'] ?? 0).toDouble(),
-      billed: (json['BILLED'] ?? 0).toDouble(),
-      balanceAmnt: (json['BALANCEAMNT'] ?? 0).toDouble(),
-    );
-  }
-  static String? _extractCustomerIdFromProjectName(dynamic projectName) {
-    if (projectName == null) return null;
-    String name = projectName.toString();
-    // Try to extract first number from project name (like "1001 - PROJECT NAME")
-    RegExp regex = RegExp(r'^(\d+)');
-    Match? match = regex.firstMatch(name);
-    if (match != null) {
-      return match.group(1);
-    }
-    return null;
-  }
-}*/
-
 class SalesBillingSummaryModel {
-  final int? customerId; // Add customer ID
-  final int? projectId; // Keep project ID
+  final int? customerId;
+  final int? projectId;
+  final String? projectCode;
+  final String customerName;
   final String projectName;
   final double woValueInclGst;
   final double billed;
+  final double? recamnt;
   final double balanceAmnt;
 
   SalesBillingSummaryModel({
     this.customerId,
     this.projectId,
+    this.projectCode,
+    required this.customerName,
     required this.projectName,
     required this.woValueInclGst,
     required this.billed,
+    this.recamnt,
     required this.balanceAmnt,
   });
 
   factory SalesBillingSummaryModel.fromJson(Map<String, dynamic> json) {
+    // Debug: Print the entire JSON to see what's coming from API
+    debugPrint('===== SalesBillingSummaryModel.fromJson =====');
+    debugPrint('Full JSON: $json');
+    debugPrint('PROJECTCODE from JSON: ${json['PROJECTCODE']}');
+    debugPrint('PROJECTCODE type: ${json['PROJECTCODE']?.runtimeType}');
+
     String projectName = json['PROJECTNAME']?.toString() ?? '';
+    String customerName = json['CUSTOMERNAME']?.toString() ?? '';
+
+    // ✅ Get project code directly from JSON
+    String? projectCode;
+    if (json['PROJECTCODE'] != null) {
+      projectCode = json['PROJECTCODE'].toString();
+      debugPrint('✅ Project Code extracted: $projectCode');
+    } else {
+      debugPrint('⚠️ PROJECTCODE is null in API response');
+    }
 
     // Extract IDs from the project name (format: "CustomerID - ProjectID - ProjectName" or "ProjectID - ProjectName")
     int? extractCustomerId(String name) {
@@ -1074,11 +1120,16 @@ class SalesBillingSummaryModel {
     }
 
     return SalesBillingSummaryModel(
-      customerId: extractCustomerId(projectName),
+      customerId: extractCustomerId(customerName),
       projectId: extractProjectId(projectName),
+      projectCode: projectCode, // ✅ Use the extracted project code
+      customerName: customerName,
       projectName: projectName,
       woValueInclGst: (json['WOVALUEINCLGST'] ?? 0).toDouble(),
-      billed: (json['BILLED'] ?? 0).toDouble(),
+      billed: (json['BILLEDAMOUNT'] ?? 0).toDouble(),
+      recamnt: json['RECEIVED'] != null
+          ? (json['RECEIVED'] as num).toDouble()
+          : null,
       balanceAmnt: (json['BALANCEAMNT'] ?? 0).toDouble(),
     );
   }
@@ -1115,4 +1166,211 @@ class ChecklistCustomer {
 
   // Optional: Get the display string
   String get displayString => "$customerId - $companyName";
+}
+
+class SalesDesignModel {
+  int? sdno;
+  int? cusid;
+  int? projid;
+  String? sddt;
+  String? selename;
+  String? seleunit;
+  String? seletot;
+  int? selesno;
+
+  // Sales Files
+  String? sfname;
+  String? sftype;
+  int? sfcount;
+
+  // Design Files
+  String? dfname;
+  String? dftype;
+  int? dfcount;
+
+  String? deleqnty;
+  String? deletot;
+  String? deleremks;
+  int? adduser;
+  int? edituser;
+  int? deluser;
+  DateTime? adddate;
+  DateTime? editdate;
+  DateTime? deldate;
+  String? deleted;
+
+  // ✅ Separate removed files
+  String? removedSalesFiles;
+  String? removedDesignFiles;
+
+  // ✅ Separate file upload lists
+  List<FileUploadModel>? salesFiles;
+  List<FileUploadModel>? designFiles;
+
+  // ✅ Keep for backward compatibility (optional)
+  String? removedfiles;
+  List<FileUploadModel>? files;
+
+  SalesDesignModel({
+    this.sdno,
+    this.cusid,
+    this.projid,
+    this.sddt,
+    this.selename,
+    this.seleunit,
+    this.seletot,
+    this.selesno,
+    this.sfname,
+    this.sftype,
+    this.sfcount,
+    this.dfname,
+    this.dftype,
+    this.dfcount,
+    this.deleqnty,
+    this.deletot,
+    this.deleremks,
+    this.adduser,
+    this.edituser,
+    this.deluser,
+    this.adddate,
+    this.editdate,
+    this.deldate,
+    this.deleted,
+    this.removedSalesFiles,
+    this.removedDesignFiles,
+    this.salesFiles,
+    this.designFiles,
+    this.removedfiles,
+    this.files,
+  });
+
+  factory SalesDesignModel.fromJson(Map<String, dynamic> json) {
+    return SalesDesignModel(
+      sdno: json['SDNO'] as int?,
+      cusid: json['CUSID'] as int?,
+      projid: json['PROJID'] as int?,
+      sddt: json['SDDT'] as String?,
+      selename: json['SELENAME'] as String?,
+      seleunit: json['SELEUNIT'] as String?,
+      seletot: json['SELETOT'] as String?,
+      selesno: json['SELESNO'] as int?,
+      sfname: json['SFNAME'] as String?,
+      sftype: json['SFTYPE'] as String?,
+      sfcount: json['SFCOUNT'] as int?,
+      dfname: json['DFNAME'] as String?,
+      dftype: json['DFTYPE'] as String?,
+      dfcount: json['DFCOUNT'] as int?,
+      deleqnty: json['DELEQNTY'] as String?,
+      deletot: json['DELETOT'] as String?,
+      deleremks: json['DELEREMKS'] as String?,
+      adduser: json['ADDUSER'],
+      edituser: json['EDITUSER'],
+      deluser: json['DELUSER'],
+      adddate:
+          json['ADDDATE'] != null ? DateTime.tryParse(json['ADDDATE']) : null,
+      editdate:
+          json['EDITDATE'] != null ? DateTime.tryParse(json['EDITDATE']) : null,
+      deldate:
+          json['DELDATE'] != null ? DateTime.tryParse(json['DELDATE']) : null,
+      deleted: json['DELETED'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'SDNO': sdno,
+      'CUSID': cusid,
+      'PROJID': projid,
+      'SDDT': sddt,
+      'SELENAME': selename,
+      'SELEUNIT': seleunit,
+      'SELETOT': seletot,
+      'SELESNO': selesno,
+      'SFNAME': sfname,
+      'SFTYPE': sftype,
+      'SFCOUNT': sfcount,
+      'DFNAME': dfname,
+      'DFTYPE': dftype,
+      'DFCOUNT': dfcount,
+      'DELEQNTY': deleqnty,
+      'DELETOT': deletot,
+      'DELEREMKS': deleremks,
+      'ADDUSER': adduser,
+      'EDITUSER': edituser,
+      'DELUSER': deluser,
+      'ADDDATE': adddate?.toIso8601String(),
+      'EDITDATE': editdate?.toIso8601String(),
+      'DELDATE': deldate?.toIso8601String(),
+      'DELETED': deleted,
+      'REMOVEDSALESFILES': removedSalesFiles,
+      'REMOVEDDESIGNFILES': removedDesignFiles,
+      'SALESFILES': salesFiles?.map((f) => f.toJson()).toList(),
+      'DESIGNFILES': designFiles?.map((f) => f.toJson()).toList(),
+      // Keep for backward compatibility
+      'REMOVEDFILES': removedfiles,
+      'FILES': files?.map((f) => f.toJson()).toList(),
+    };
+  }
+}
+
+class DesignFileUploadModel {
+  String? filename;
+  String? filedata;
+
+  DesignFileUploadModel({
+    this.filename,
+    this.filedata,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'FILENAME': filename,
+      'FILEDATA': filedata,
+    };
+  }
+}
+
+class SalesEntryModel {
+  String elementName;
+  String unit;
+  String totalQty;
+  String designTotal;
+  String dremarks;
+  final String? sfname;
+  final String? sftype;
+
+  SalesEntryModel({
+    required this.elementName,
+    required this.unit,
+    required this.totalQty,
+    this.designTotal = '',
+    this.dremarks = '',
+    this.sfname,
+    this.sftype,
+  });
+}
+
+class ElementMasterModel {
+  final int? eleCode; // ✅ Changed to int to match C# model
+  final String? eleName;
+  final String? eleUnit;
+
+  ElementMasterModel({
+    this.eleCode,
+    this.eleName,
+    this.eleUnit,
+  });
+
+  factory ElementMasterModel.fromJson(Map<String, dynamic> json) {
+    return ElementMasterModel(
+      eleCode: json['ELECODE'] as int?, // ✅ Parse as int
+      eleName: json['ELENAME'] ?? '',
+      eleUnit: json['ELEUNIT'] ?? '',
+    );
+  }
+
+  @override
+  String toString() {
+    return 'ElementMasterModel(eleCode: $eleCode, eleName: $eleName, eleUnit: $eleUnit)';
+  }
 }

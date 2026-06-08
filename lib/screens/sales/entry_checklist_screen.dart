@@ -1,21 +1,32 @@
 import 'dart:convert';
-
+import 'dart:io';
+import 'package:flutter_pdfview/flutter_pdfview.dart';
+import 'package:universal_html/html.dart' as html;
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:tsm/api/api_utils.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../colors/app_colors.dart';
 import '../../models/project.dart';
 import '../../services/prefrence_helper.dart';
+import '../../widgets/crop_screen.dart';
+import 'dart:io' as io;
+import 'package:path/path.dart' as path;
 
 class EntryChecklistScreen extends StatefulWidget {
   final SalesChecklistModel? checklistData;
   final bool? isReadOnly;
+  final VoidCallback? onDataSaved;
   const EntryChecklistScreen({
     super.key,
     this.checklistData,
     this.isReadOnly = false,
+    this.onDataSaved,
   });
 
   @override
@@ -327,6 +338,10 @@ class _EntryChecklistScreenState extends State<EntryChecklistScreen> {
   int? selectedCustomerId;
   int empCode = 0;
   String empName = '';
+
+  List<PlatformFile> _attachedFiles = [];
+  List<String> _existingFiles = [];
+  List<String> _removedFiles = [];
 
   @override
   void initState() {
@@ -4121,6 +4136,45 @@ class _EntryChecklistScreenState extends State<EntryChecklistScreen> {
                       ),
                       const SizedBox(height: 16),
 
+                      ///Document Upload
+                      _buildAttachCard(),
+                      const SizedBox(height: 16),
+
+                      ///Document Text
+                      if (_existingFiles.isEmpty && _attachedFiles.isEmpty)
+                        Center(
+                            child: Text('No files selected',
+                                style: TextStyle(color: Colors.grey.shade600))),
+                      const SizedBox(height: 16),
+
+                      // Existing files (already uploaded)
+                      if (_existingFiles.isNotEmpty)
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Existing Attachments:',
+                                style: TextStyle(fontWeight: FontWeight.bold)),
+                            SizedBox(height: 8),
+                            ..._existingFiles.map((fileName) =>
+                                _buildExistingAttachmentItem(fileName)),
+                          ],
+                        ),
+                      const SizedBox(height: 16),
+
+                      // Newly picked files
+                      if (_attachedFiles.isNotEmpty)
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('New Attachments:',
+                                style: TextStyle(fontWeight: FontWeight.bold)),
+                            SizedBox(height: 8),
+                            ..._attachedFiles
+                                .map((file) => _buildAttachmentItem(file)),
+                          ],
+                        ),
+                      const SizedBox(height: 16),
+
                       ///Submit & Update Button
                       if (!isViewOnly) ...[
                         Row(
@@ -4293,6 +4347,221 @@ class _EntryChecklistScreenState extends State<EntryChecklistScreen> {
     }
   }
 
+  /*Future<void> _insertSalesChecklist() async {
+    try {
+      final isEditing = widget.checklistData != null;
+
+      final requestBody = {
+        // For Update: Include CHKLNO (always include for update, don't include for insert)
+        if (isEditing) "CHKLNO": widget.checklistData?.chklno,
+
+        // For Insert: Include CLIENTNAME and PROJECTNAME
+        "CLIENTNAME": customerController.text,
+        "PROJECTNAME": siteController.text,
+
+        // Common fields for both Insert and Update
+        "VERIFIEDBY": verifiedbyController.text,
+        "REVIEWEDBY": reviewedbyController.text,
+        "SITEADDRESS": siteaddressController.text,
+        "BILLINGADDRESS": billingaddressController.text,
+        "SITEGSTNO": sitegstController.text,
+        "BILLINGGSTNO": billgstController.text,
+        "EFFECTIVEDATE": efffectiveDate != null
+            ? DateFormat('yyyy-MM-ddTHH:mm:ss').format(efffectiveDate!)
+            : null,
+        "WOVALUEINCLGST": workordervalueincludinggstController.text.isEmpty
+            ? null
+            : double.tryParse(
+                workordervalueincludinggstController.text.replaceAll(',', '')),
+        "PROJECTTENURE": tenureController.text,
+        "DEFLIABPERIOD": liabilityController.text,
+        "CONTRACTTYPE": contractController.text,
+        "BILLINGMETHOD": methodofbillingController.text,
+        "PAYMENTTERMS": billingfrequencyController.text,
+        "MILESTONES": milestonesController.text,
+        "RETENTION": retentionController.text,
+        "BGREQ": selectedbankreq,
+        "ESCDETAILS": selectedescl,
+        "TAXSTRCHANGES": selectedtax,
+        "SCOPEOFWORKSIGNED": workscope == "No"
+            ? "No - ${workscopeController.text}"
+            : (workscope == "Yes" ? "Yes - ${selectedworkscope ?? ''}" : ""),
+        "WPMETHODOLOGY": waterproofing == "No"
+            ? "No - ${waterproffingController.text}"
+            : (waterproofing == "Yes"
+                ? "Yes - ${selectedwaterproffing ?? ''}"
+                : ""),
+        "ANTITERMITEWORK": antitermite == "No"
+            ? "No - ${antitermiteController.text}"
+            : (antitermite == "Yes"
+                ? "Yes - ${selectedantitermite ?? ''}"
+                : ""),
+        "SITEACCESSISSUES": siteacc == "No"
+            ? "No - ${siteaccController.text}"
+            : (siteacc == "Yes" ? "Yes - ${selectedsiteacc ?? ''}" : ""),
+        "DEWATERING": dewatering == "No"
+            ? "No - ${dewateringController.text}"
+            : (dewatering == "Yes" ? "Yes - ${selecteddewatering ?? ''}" : ""),
+        "ELECTRICITYWATER": electricitywater == "No"
+            ? "No - ${electricitywaterController.text}"
+            : (electricitywater == "Yes"
+                ? "Yes - ${selectedelectricitywater ?? ''}"
+                : ""),
+        "STEELCEMENTBRANDS": steelcement == "No"
+            ? "No - ${steelcementController.text}"
+            : (steelcement == "Yes"
+                ? "Yes - ${selectedsteelcement ?? ''}"
+                : ""),
+        "NONTENITEMSMAR": tendermargin == "No"
+            ? "No - ${tendermarginController.text}"
+            : (tendermargin == "Yes"
+                ? "Yes - ${selectedtendermargin ?? ''}"
+                : ""),
+        "SOILEXCDETAILS": soil == "No"
+            ? "No - ${soilController.text}"
+            : (soil == "Yes" ? "Yes - ${selectedsoil ?? ''}" : ""),
+        "BUILDINGAPP": statapproval == "No"
+            ? "No - ${statapprovalController.text}"
+            : (statapproval == "Yes"
+                ? "Yes - ${selectedstatapproval ?? ''}"
+                : ""),
+        "SOILINV": soilsurvey == "No"
+            ? "No - ${soilsurveyController.text}"
+            : (soilsurvey == "Yes" ? "Yes - ${selectedsoilsurvey ?? ''}" : ""),
+        "BARRICATION": barrication == "No"
+            ? "No - ${barricationController.text}"
+            : (barrication == "Yes"
+                ? "Yes - ${selectedbarrication ?? ''}"
+                : ""),
+        "TREECUTTINGDEM": treecutting == "No"
+            ? "No - ${treecuttingController.text}"
+            : (treecutting == "Yes"
+                ? "Yes - ${selectedtreecutting ?? ''}"
+                : ""),
+        "LABOURACCOM": labouracc == "No"
+            ? "No - ${labouraccController.text}"
+            : (labouracc == "Yes" ? "Yes - ${selectedlabouracc ?? ''}" : ""),
+        "BRICKWORK": brickwork == "No"
+            ? "No - ${brickworkController.text}"
+            : (brickwork == "Yes" ? "Yes - ${selectedbrickwork ?? ''}" : ""),
+        "SITESECURITY": sitesec == "No"
+            ? "No - ${sitesecController.text}"
+            : (sitesec == "Yes" ? "Yes - ${selectedsitesec ?? ''}" : ""),
+        "LIGHTINGARR": lightarr == "No"
+            ? "No - ${lightarrController.text}"
+            : (lightarr == "Yes" ? "Yes - ${selectedlightarr ?? ''}" : ""),
+        "FORCEMAJEURECON": forcemaj,
+        "ARBITRATIONCLAUSE": arbitration,
+        "LABCOMINS": labourcomp,
+        "LIQUIDATEDDAMAGES": liqdamage,
+        "STABILITYCERTCLAUSE": stability,
+        "GROUTTEEMAXAPP": grout,
+        "EXJOINTREQ": jointreq == "No"
+            ? "No - ${jointreqController.text}"
+            : (jointreq == "Yes" ? "Yes - ${selectedjointreq ?? ''}" : ""),
+        "IDLECHARGES": idlecharg,
+        "THIRDPARTYTESTS": thirdpartytest,
+        "ADDUSER": empCode,
+        "FILES": _buildFilesList(),
+        "REMOVEDFILES":
+            _removedFiles.isNotEmpty ? _removedFiles.join(",") : null,
+      };
+
+      // Remove any null values from requestBody
+      final cleanedRequestBody = Map.from(requestBody)
+        ..removeWhere(
+            (key, value) => value == null || value.toString().isEmpty);
+
+      // Use the unified SaveSalesChecklist endpoint
+      final apiEndpoint = 'SaveSalesChecklist';
+
+      print("API URL : ${ApiUtils.getUri(apiEndpoint)}");
+      print("REQUEST BODY : ${jsonEncode(cleanedRequestBody)}");
+
+      final response = await http.post(
+        ApiUtils.getUri(apiEndpoint),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: jsonEncode(cleanedRequestBody),
+      );
+
+      print("STATUS CODE : ${response.statusCode}");
+      print("RESPONSE BODY : ${response.body}");
+
+      // Check if response is valid JSON
+      if (response.body.trim().startsWith('<!DOCTYPE') ||
+          response.body.trim().startsWith('<html')) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Server error occurred. Please try again later.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      final data = jsonDecode(response.body);
+
+      if (data['Success'] == true) {
+        print("${isEditing ? 'UPDATE' : 'INSERT'} SUCCESS");
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(data['Message']),
+            backgroundColor: Colors.green,
+          ),
+        );
+        // ✅ Clear local states
+        _removedFiles.clear();
+        _attachedFiles.clear();
+
+        // ✅ Refresh the data by calling the callback or reloading from API
+        if (widget.onDataSaved != null) {
+          widget.onDataSaved!();
+        }
+
+        // ✅ For edit mode, update the local checklistData with new file list
+        if (isEditing && widget.checklistData != null) {
+          await _refreshChecklistData(widget.checklistData!.chklno);
+        }
+        if (!isEditing) {
+          clearAllFields();
+        }
+        Navigator.pop(context, true); // Return true to indicate data was saved
+      } else {
+        print("${isEditing ? 'UPDATE' : 'INSERT'} FAILED");
+        print("ERROR MESSAGE : ${data['Message']}");
+
+        String errorMessage = "";
+
+        if (data['Message'] is List) {
+          errorMessage = (data['Message'] as List).join("\n");
+        } else {
+          errorMessage = data['Message'].toString();
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e, stackTrace) {
+      print("EXCEPTION ERROR : $e");
+      print("STACK TRACE : $stackTrace");
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString()),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }*/
+
   Future<void> insertSalesChecklist() async {
     try {
       final isEditing = widget.checklistData != null;
@@ -4408,6 +4677,9 @@ class _EntryChecklistScreenState extends State<EntryChecklistScreen> {
         "IDLECHARGES": idlecharg,
         "THIRDPARTYTESTS": thirdpartytest,
         "ADDUSER": empCode,
+        "FILES": _buildFilesList(),
+        "REMOVEDFILES":
+            _removedFiles.isNotEmpty ? _removedFiles.join(",") : null,
       };
 
       // Remove any null values from requestBody
@@ -4456,9 +4728,49 @@ class _EntryChecklistScreenState extends State<EntryChecklistScreen> {
           ),
         );
 
+        // ✅ UPDATE UI IMMEDIATELY - Handle file lists
+        if (isEditing) {
+          // For Edit mode: Update existing files list
+          if (_removedFiles.isNotEmpty) {
+            // Remove deleted files from _existingFiles
+            _existingFiles.removeWhere((file) => _removedFiles.contains(file));
+          }
+
+          if (_attachedFiles.isNotEmpty) {
+            // Add newly uploaded files to _existingFiles
+            final newFileNames = _attachedFiles.map((f) => f.name).toList();
+            _existingFiles.addAll(newFileNames);
+          }
+
+          // Update the widget's checklistData reference
+          if (widget.checklistData != null) {
+            widget.checklistData!.chkfname =
+                _existingFiles.isNotEmpty ? _existingFiles.join(",") : null;
+            widget.checklistData!.chkfcount = _existingFiles.length;
+          }
+        } else {
+          // For Insert mode: Set existing files to newly uploaded ones
+          if (_attachedFiles.isNotEmpty) {
+            _existingFiles = _attachedFiles.map((f) => f.name).toList();
+          }
+        }
+
+        // Clear temporary lists
+        _removedFiles.clear();
+        _attachedFiles.clear();
+
+        // Force UI to rebuild with updated file lists
+        setState(() {});
+
+        // Call the callback if provided
+        if (widget.onDataSaved != null) {
+          widget.onDataSaved!();
+        }
+
         if (!isEditing) {
           clearAllFields();
         }
+
         Navigator.pop(context, true); // Return true to indicate data was saved
       } else {
         print("${isEditing ? 'UPDATE' : 'INSERT'} FAILED");
@@ -4695,6 +5007,10 @@ class _EntryChecklistScreenState extends State<EntryChecklistScreen> {
       }
     }
 
+    // Populate existing attached files
+    if (data.chkfname != null && data.chkfname!.isNotEmpty) {
+      _existingFiles = data.chkfname!.split(',').map((e) => e.trim()).toList();
+    }
     // Populate scope clearance fields
     setStatusAndRemarks(
       data.scopeofworksigned,
@@ -4852,6 +5168,356 @@ class _EntryChecklistScreenState extends State<EntryChecklistScreen> {
     // After populating all fields, trigger a rebuild
     setState(() {});
   }
+
+  bool get isAndroid {
+    if (kIsWeb) return false;
+    return Platform.isAndroid;
+  }
+
+  Widget _buildAttachCard() {
+    // Helper to check if we're on Android specifically
+
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            // Files button - available on all platforms
+            _buildAttachButton(
+              icon: Icons.attach_file,
+              label: 'Files',
+              onPressed: pickFiles,
+              color: AppColors.primaryLight,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAttachButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+    required Color color,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          icon: Icon(icon),
+          onPressed: onPressed,
+          color: color,
+        ),
+        Text(label, style: TextStyle(fontSize: 12)),
+      ],
+    );
+  }
+
+  Future<void> pickFiles() async {
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      allowedExtensions: [
+        'jpg',
+        'jpeg',
+        'png',
+        'pdf',
+        'doc',
+        'docx',
+        'dwg',
+        'dot', 'dotx', // Word
+        'xls', 'xlsx', 'xlsm', 'xlsb', 'csv', // Excel
+      ],
+      type: FileType.custom,
+      withData: true,
+    );
+
+    if (result != null) {
+      List<PlatformFile> newFiles = [];
+
+      for (var file in result.files) {
+        if (['jpg', 'jpeg', 'png'].contains(file.extension?.toLowerCase())) {
+          final bytes = file.bytes;
+          if (bytes == null) continue;
+
+          final croppedBytes = await Navigator.push<Uint8List>(
+            context,
+            MaterialPageRoute(
+              builder: (context) => CropScreen(
+                imageBytes: bytes,
+                onCropped: (croppedBytes) {},
+              ),
+            ),
+          );
+
+          if (croppedBytes != null) {
+            newFiles.add(PlatformFile(
+              name: 'cropped_${file.name}',
+              path: kIsWeb
+                  ? null
+                  : '${(await getTemporaryDirectory()).path}/cropped_${file.name}',
+              bytes: croppedBytes,
+              size: croppedBytes.length,
+            ));
+          }
+        } else {
+          newFiles.add(file);
+        }
+      }
+
+      setState(() {
+        _attachedFiles.addAll(newFiles);
+      });
+    }
+  }
+
+  Widget _buildAttachmentItem(PlatformFile file) {
+    return Card(
+      margin: EdgeInsets.symmetric(vertical: 4),
+      child: ListTile(
+        leading: FutureBuilder<Widget>(
+          future: _generateThumbnail(file),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.done &&
+                snapshot.hasData) {
+              return Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(4),
+                  color: Colors.grey[200],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: snapshot.data,
+                ),
+              );
+            }
+            return Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(4),
+                color: Colors.grey[200],
+              ),
+              child: Center(child: CircularProgressIndicator()),
+            );
+          },
+        ),
+        title: Text(file.name, overflow: TextOverflow.ellipsis),
+        subtitle: Text('${(file.size / 1024).toStringAsFixed(1)} KB'),
+        trailing: IconButton(
+          icon: Icon(Icons.close),
+          onPressed: () => setState(() => _attachedFiles.remove(file)),
+        ),
+        onTap: () => _previewFile(file),
+      ),
+    );
+  }
+
+  Future<Widget> _generateThumbnail(PlatformFile file) async {
+    final extension = file.name.split('.').last.toLowerCase();
+
+    // For all platforms, just show icons (no thumbnails)
+    if (['jpg', 'jpeg', 'png', 'gif', 'dwg'].contains(extension)) {
+      return _buildFileIcon(Icons.image, Colors.amber);
+    } else if (['pdf'].contains(extension)) {
+      return _buildFileIcon(Icons.picture_as_pdf, Colors.red);
+    } else if (['doc', 'docx'].contains(extension)) {
+      return _buildFileIcon(Icons.description, Colors.blue);
+    } else if (['xls', 'xlsx', 'xlsm', 'xlsb', 'csv'].contains(extension)) {
+      return _buildFileIcon(Icons.table_chart, Colors.green);
+    }
+
+    // Default file icon
+    return _buildFileIcon(Icons.insert_drive_file, Colors.grey);
+  }
+
+  Future<void> _previewFile(PlatformFile file) async {
+    final extension = file.name.split('.').last.toLowerCase();
+
+    if (['jpg', 'jpeg', 'png', 'gif'].contains(extension)) {
+      _showImagePreview(file);
+    } else if (['pdf'].contains(extension)) {
+      _showPdfPreview(file);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Preview not available for this file type')));
+    }
+  }
+
+  void _showImagePreview(PlatformFile file) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          appBar: AppBar(title: Text(file.name)),
+          body: Center(
+            child: InteractiveViewer(
+              panEnabled: true,
+              minScale: 0.5,
+              maxScale: 3.0,
+              child: file.bytes != null
+                  ? Image.memory(file.bytes!)
+                  : (!kIsWeb && file.path != null)
+                      ? Image.file(File(file.path!))
+                      : Container(),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFileIcon(IconData icon, Color color) {
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Center(
+        child: Icon(icon, size: 24, color: color),
+      ),
+    );
+  }
+
+  void _showPdfPreview(PlatformFile file) async {
+    try {
+      if (kIsWeb) {
+        final blob = html.Blob([file.bytes], 'application/pdf');
+        final url = html.Url.createObjectUrlFromBlob(blob);
+        html.window.open(url, '_blank');
+      } else if (io.Platform.isWindows ||
+          io.Platform.isMacOS ||
+          io.Platform.isLinux) {
+        // Save to temp directory and open with default application
+        final tempDir = io.Directory.systemTemp;
+        final tempFile = io.File(path.join(tempDir.path, file.name));
+        await tempFile.writeAsBytes(file.bytes!);
+
+        final uri = Uri.file(tempFile.path);
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri);
+        } else {
+          throw Exception('Could not open PDF file');
+        }
+      } else {
+        // Mobile implementation
+        final path =
+            file.path ?? (await _saveToFile(file.name, file.bytes!)).path;
+
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => Scaffold(
+              appBar: AppBar(title: Text(file.name)),
+              body: PDFView(
+                filePath: path,
+                enableSwipe: true,
+                swipeHorizontal: false,
+              ),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to preview PDF: $e')),
+      );
+    }
+  }
+
+  List<Map<String, String>> _buildFilesList() {
+    return _attachedFiles
+        .map((file) {
+          final bytes = file.bytes;
+          if (bytes == null) return null;
+
+          final base64Data = base64Encode(bytes);
+          return {
+            "FILENAME": file.name,
+            "FILEDATA": base64Data,
+          };
+        })
+        .whereType<Map<String, String>>()
+        .toList();
+  }
+
+  Widget _buildExistingAttachmentItem(String fileName) {
+    final extension = fileName.split('.').last.toLowerCase();
+
+    return Card(
+      margin: EdgeInsets.symmetric(vertical: 4),
+      child: ListTile(
+        leading: _buildFileIconSync(extension),
+        title: Text(fileName, overflow: TextOverflow.ellipsis),
+        trailing: !widget.isReadOnly!
+            ? IconButton(
+                icon: Icon(Icons.close),
+                onPressed: () {
+                  setState(() {
+                    _existingFiles.remove(fileName);
+                    _removedFiles.add(fileName); // ← track for backend deletion
+                  });
+                },
+              )
+            : null,
+      ),
+    );
+  }
+
+  Widget _buildFileIconSync(String extension) {
+    if (['jpg', 'jpeg', 'png', 'gif', 'dwg'].contains(extension)) {
+      return _buildFileIcon(Icons.image, Colors.amber);
+    } else if (['pdf'].contains(extension)) {
+      return _buildFileIcon(Icons.picture_as_pdf, Colors.red);
+    } else if (['doc', 'docx'].contains(extension)) {
+      return _buildFileIcon(Icons.description, Colors.blue);
+    } else if (['xls', 'xlsx', 'xlsm', 'xlsb', 'csv'].contains(extension)) {
+      return _buildFileIcon(Icons.table_chart, Colors.green);
+    }
+    return _buildFileIcon(Icons.insert_drive_file, Colors.grey);
+  }
+
+  Future<void> _refreshChecklistData(int? chklno) async {
+    if (chklno == null) return; // Guard clause
+
+    try {
+      final response = await http.post(
+        ApiUtils.getUri('GetSalesChecklist'),
+        body: jsonEncode({"CHKLNO": chklno}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['Success'] == true) {
+          final updatedData = SalesChecklistModel.fromJson(data['Data']);
+
+          // Update the existing checklistData reference
+          widget.checklistData?.chkfname = updatedData.chkfname;
+          widget.checklistData?.chkftype = updatedData.chkftype;
+          widget.checklistData?.chkfcount = updatedData.chkfcount;
+
+          // Update local _existingFiles
+          if (updatedData.chkfname != null &&
+              updatedData.chkfname!.isNotEmpty) {
+            _existingFiles =
+                updatedData.chkfname!.split(',').map((e) => e.trim()).toList();
+          } else {
+            _existingFiles = [];
+          }
+
+          setState(() {});
+        }
+      }
+    } catch (e) {
+      debugPrint("Error refreshing checklist data: $e");
+    }
+  }
 }
 
 class CapitalizeFirstLetterFormatter extends TextInputFormatter {
@@ -4898,3627 +5564,8 @@ class CapitalizeFirstLetterFormatter extends TextInputFormatter {
   }
 }
 
-/*
-@override
-Widget _build(BuildContext context) {
-  final isEditing = widget.checklistData != null && !widget.isReadOnly!;
-  final isViewOnly = widget.isReadOnly == true;
-  return Scaffold(
-    appBar: AppBar(
-      title: Text(isViewOnly
-          ? 'View Check List #${widget.checklistData?.chklno ?? ''}'
-          : (isEditing
-          ? 'Edit Check List Entry #${widget.checklistData?.chklno ?? ''}'
-          : 'Check List Entry')),
-      backgroundColor: AppColors.primaryDark,
-      foregroundColor: Colors.white,
-      leading: Padding(
-        padding: const EdgeInsets.all(8.0),
-        child: GestureDetector(
-          onTap: () => Navigator.of(context).pop(),
-          child: Container(
-            decoration: const BoxDecoration(
-                color: Colors.white, shape: BoxShape.circle),
-            child: const Icon(Icons.arrow_back, color: AppColors.primary),
-          ),
-        ),
-      ),
-      actions: isViewOnly
-          ? [
-        IconButton(
-          icon: const Icon(Icons.edit, color: Colors.white),
-          onPressed: () {
-            // Navigate to edit mode
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (context) => EntryChecklistScreen(
-                  checklistData: widget.checklistData,
-                  isReadOnly: false,
-                ),
-              ),
-            );
-          },
-          tooltip: 'Edit',
-        ),
-      ]
-          : null,
-    ),
-    body: SingleChildScrollView(
-      controller: _scrollController,
-      child: Center(
-        child: Container(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ///Customer Name & Project Name
-                  Row(
-                    children: [
-                      Expanded(
-                        child: isViewOnly
-                            ? TextFormField(
-                          controller: customerController,
-                          decoration: _inputDecoration("Customer Name"),
-                          readOnly: true,
-                          enabled: false,
-                        )
-                            : Autocomplete<CustomerModel>(
-                          displayStringForOption: (option) =>
-                          "${option.customerId} - ${option.companyName}",
-                          optionsBuilder:
-                              (TextEditingValue textEditingValue) {
-                            if (textEditingValue.text.isEmpty) {
-                              return customerList;
-                            }
-
-                            return customerList.where((customer) {
-                              return customer.companyName
-                                  .toLowerCase()
-                                  .contains(
-                                textEditingValue.text
-                                    .toLowerCase(),
-                              ) ||
-                                  customer.customerId
-                                      .toString()
-                                      .contains(textEditingValue.text);
-                            });
-                          },
-                          onSelected: (CustomerModel selection) {
-                            customerController.text =
-                            "${selection.customerId} - ${selection.companyName}";
-
-                            setState(() {
-                              selectedCustomerId = selection.customerId;
-
-                              /// Clear old project selection
-                              selectedProjectId = null;
-                              siteController.clear();
-                            });
-
-                            /// Load project list
-                            loadProjects(selection.customerId);
-                          },
-                          fieldViewBuilder: (
-                              context,
-                              controller,
-                              focusNode,
-                              onFieldSubmitted,
-                              ) {
-                            controller.text = customerController.text;
-
-                            return TextFormField(
-                              controller: controller,
-                              focusNode: focusNode,
-                              decoration: InputDecoration(
-                                labelText: "Customer Name",
-                                hintText: "Search Customer",
-                                border: const OutlineInputBorder(),
-                                suffixIcon: controller.text.isNotEmpty
-                                    ? IconButton(
-                                  icon: const Icon(Icons.clear),
-                                  onPressed: () {
-                                    controller.clear();
-                                    customerController.clear();
-
-                                    setState(() {
-                                      selectedCustomerId = null;
-
-                                      /// Clear project also
-                                      selectedProjectId = null;
-                                      siteController.clear();
-                                    });
-                                  },
-                                )
-                                    : null,
-                              ),
-                              autovalidateMode:
-                              AutovalidateMode.onUserInteraction,
-
-                            );
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: isViewOnly
-                            ? TextFormField(
-                          controller: siteController,
-                          decoration: _inputDecoration("Site Name"),
-                          readOnly: true,
-                          enabled: false,
-                        )
-                            : Autocomplete<Project>(
-                          displayStringForOption: (option) =>
-                          "${option.projectId} - ${option.projectName}",
-                          optionsBuilder:
-                              (TextEditingValue textEditingValue) {
-                            if (textEditingValue.text.isEmpty) {
-                              return projectList;
-                            }
-
-                            return projectList.where((project) {
-                              return project.projectName
-                                  .toLowerCase()
-                                  .contains(
-                                textEditingValue.text
-                                    .toLowerCase(),
-                              ) ||
-                                  project.projectId
-                                      .toString()
-                                      .contains(textEditingValue.text);
-                            });
-                          },
-                          onSelected: (Project selection) {
-                            siteController.text =
-                            "${selection.projectId} - ${selection.projectName}";
-
-                            setState(() {
-                              selectedProjectId = selection.projectId;
-                            });
-                          },
-                          fieldViewBuilder: (
-                              context,
-                              controller,
-                              focusNode,
-                              onFieldSubmitted,
-                              ) {
-                            controller.text = siteController.text;
-
-                            return TextFormField(
-                              controller: controller,
-                              focusNode: focusNode,
-                              decoration: InputDecoration(
-                                labelText: "Site Name",
-                                hintText: "Search Site",
-                                border: const OutlineInputBorder(),
-                                suffixIcon: controller.text.isNotEmpty
-                                    ? IconButton(
-                                  icon: const Icon(Icons.clear),
-                                  onPressed: () {
-                                    controller.clear();
-                                    siteController.clear();
-
-                                    setState(() {
-                                      selectedProjectId = null;
-
-                                      /// Clear project also
-                                      selectedProjectId = null;
-                                      siteController.clear();
-                                    });
-                                  },
-                                )
-                                    : null,
-                              ),
-                              autovalidateMode:
-                              AutovalidateMode.onUserInteraction,
-
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  /// Verified By & Reviewed By
-                  Row(
-                    children: [
-                      /// VERIFIED BY
-                      Expanded(
-                        child: isViewOnly
-                            ? TextFormField(
-                          controller: verifiedbyController,
-                          decoration:
-                          _inputDecoration("Verified By").copyWith(
-                            suffixIcon: verifiedbyController
-                                .text.isNotEmpty
-                                ? IconButton(
-                              icon: const Icon(Icons.clear,
-                                  size: 18),
-                              onPressed: () {
-                                // In view mode, you might not want to allow clearing
-                                // But if you do, you can implement it
-                                setState(() {
-                                  verifiedbyController.clear();
-                                });
-                              },
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear',
-                            )
-                                : null,
-                          ),
-                          readOnly: true,
-                          enabled: false,
-                        )
-                            : Autocomplete<SalesEmployeeModel>(
-                          displayStringForOption: (option) =>
-                          "${option.empCode} - ${option.empName} ",
-                          optionsBuilder:
-                              (TextEditingValue textEditingValue) {
-                            if (textEditingValue.text.isEmpty) {
-                              return salesEmployees;
-                            }
-                            return salesEmployees.where((employee) {
-                              return employee.empName
-                                  .toLowerCase()
-                                  .contains(textEditingValue.text
-                                  .toLowerCase()) ||
-                                  employee.empCode
-                                      .toString()
-                                      .contains(textEditingValue.text);
-                            });
-                          },
-                          onSelected: (SalesEmployeeModel selection) {
-                            verifiedbyController.text =
-                            "${selection.empCode} - ${selection.empName}";
-                          },
-                          fieldViewBuilder: (
-                              context,
-                              controller,
-                              focusNode,
-                              onFieldSubmitted,
-                              ) {
-                            controller.text = verifiedbyController.text;
-                            return TextFormField(
-                              controller: controller,
-                              focusNode: focusNode,
-                              decoration: InputDecoration(
-                                labelText: "Verified By",
-                                hintText: "Search Employee",
-                                border: const OutlineInputBorder(),
-                                suffixIcon: controller.text.isNotEmpty
-                                    ? IconButton(
-                                  icon: const Icon(Icons.clear,
-                                      size: 18),
-                                  onPressed: () {
-                                    controller.clear();
-                                    verifiedbyController.clear();
-                                    setState(() {});
-                                  },
-                                  padding: EdgeInsets.zero,
-                                  tooltip: 'Clear',
-                                )
-                                    : null,
-                                contentPadding:
-                                const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 14,
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-
-                      /// REVIEWED BY
-                      Expanded(
-                        child: isViewOnly
-                            ? TextFormField(
-                          controller: reviewedbyController,
-                          decoration:
-                          _inputDecoration("Reviewed By").copyWith(
-                            suffixIcon: reviewedbyController
-                                .text.isNotEmpty
-                                ? IconButton(
-                              icon: const Icon(Icons.clear,
-                                  size: 18),
-                              onPressed: () {
-                                setState(() {
-                                  reviewedbyController.clear();
-                                });
-                              },
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear',
-                            )
-                                : null,
-                          ),
-                          readOnly: true,
-                          enabled: false,
-                        )
-                            : Autocomplete<SalesEmployeeModel>(
-                          displayStringForOption: (option) =>
-                          "${option.empCode} - ${option.empName} ",
-                          optionsBuilder:
-                              (TextEditingValue textEditingValue) {
-                            if (textEditingValue.text.isEmpty) {
-                              return salesEmployees;
-                            }
-                            return salesEmployees.where((employee) {
-                              return employee.empName
-                                  .toLowerCase()
-                                  .contains(textEditingValue.text
-                                  .toLowerCase()) ||
-                                  employee.empCode
-                                      .toString()
-                                      .contains(textEditingValue.text);
-                            });
-                          },
-                          onSelected: (SalesEmployeeModel selection) {
-                            reviewedbyController.text =
-                            "${selection.empCode} - ${selection.empName}";
-                          },
-                          fieldViewBuilder: (
-                              context,
-                              controller,
-                              focusNode,
-                              onFieldSubmitted,
-                              ) {
-                            controller.text = reviewedbyController.text;
-                            return TextFormField(
-                              controller: controller,
-                              focusNode: focusNode,
-                              decoration: InputDecoration(
-                                labelText: "Reviewed By",
-                                hintText: "Search Employee",
-                                border: const OutlineInputBorder(),
-                                suffixIcon: controller.text.isNotEmpty
-                                    ? IconButton(
-                                  icon: const Icon(Icons.clear,
-                                      size: 18),
-                                  onPressed: () {
-                                    controller.clear();
-                                    reviewedbyController.clear();
-                                    setState(() {});
-                                  },
-                                  padding: EdgeInsets.zero,
-                                  tooltip: 'Clear',
-                                )
-                                    : null,
-                                contentPadding:
-                                const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 14,
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  Center(
-                    child: Text(
-                      'Checklist for Contract Signing',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Generic Details
-                  Text(
-                    'Generic Details',
-                    style: TextStyle(
-                        fontSize: 16, color: AppColors.primaryLight),
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Site Address & Billing Address
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                          child: TextFormField(
-                            controller: siteaddressController,
-                            decoration: InputDecoration(
-                              labelText: "Site Address",
-                              hintText: "Site Address",
-                              border: const OutlineInputBorder(),
-                              suffixIcon: siteaddressController.text.isNotEmpty
-                                  ? IconButton(
-                                icon: const Icon(Icons.clear, size: 18),
-                                onPressed: () {
-                                  setState(() {
-                                    siteaddressController.clear();
-                                    if (isSameAsSiteAddress) {
-                                      billingaddressController.clear();
-                                      isSameAsSiteAddress = false;
-                                    }
-                                  });
-                                },
-                                padding: EdgeInsets.zero,
-                                tooltip: 'Clear',
-                              )
-                                  : null,
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 14,
-                              ),
-                            ),
-                            //minLines: 3,
-                            maxLines: null, // Auto-expand
-                            keyboardType: TextInputType.multiline,
-                            readOnly: isViewOnly,
-                            enabled: !isViewOnly,
-                          )),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            TextFormField(
-                              controller: billingaddressController,
-                              decoration: InputDecoration(
-                                labelText: "Billing Address",
-                                hintText: "Billing Address",
-                                border: const OutlineInputBorder(),
-                                suffixIcon: billingaddressController
-                                    .text.isNotEmpty
-                                    ? IconButton(
-                                  icon:
-                                  const Icon(Icons.clear, size: 18),
-                                  onPressed: () {
-                                    setState(() {
-                                      billingaddressController.clear();
-                                      if (isSameAsSiteAddress) {
-                                        isSameAsSiteAddress = false;
-                                      }
-                                    });
-                                  },
-                                  padding: EdgeInsets.zero,
-                                  tooltip: 'Clear',
-                                )
-                                    : null,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 14,
-                                ),
-                              ),
-                              //minLines: 3,
-                              maxLines: null, // Auto-expand
-                              keyboardType: TextInputType.multiline,
-                              readOnly: isViewOnly,
-                              enabled: !isViewOnly,
-                            ),
-                            const SizedBox(height: 4),
-                            if (!isViewOnly) ...[
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Checkbox(
-                                    value: isSameAsSiteAddress,
-                                    materialTapTargetSize:
-                                    MaterialTapTargetSize.shrinkWrap,
-                                    visualDensity: VisualDensity.compact,
-                                    onChanged: (value) {
-                                      setState(() {
-                                        isSameAsSiteAddress = value ?? false;
-
-                                        if (isSameAsSiteAddress) {
-                                          billingaddressController.text =
-                                              siteaddressController.text;
-                                        } else {
-                                          billingaddressController.clear();
-                                        }
-                                      });
-                                    },
-                                  ),
-                                  const Text(
-                                    "Same as Site Address",
-                                    style: TextStyle(fontSize: 12),
-                                  ),
-                                ],
-                              ),
-                            ]
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Site GST No & Billing GST No
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: sitegstController,
-                          decoration: InputDecoration(
-                            labelText: "Site GST No",
-                            hintText: "Site GST No",
-                            border: const OutlineInputBorder(),
-                            suffixIcon: sitegstController.text.isNotEmpty
-                                ? IconButton(
-                              icon: const Icon(Icons.clear, size: 18),
-                              onPressed: () {
-                                setState(() {
-                                  sitegstController.clear();
-                                  if (isSameAsSiteGST) {
-                                    isSameAsSiteGST = false;
-                                  }
-                                });
-                              },
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear',
-                            )
-                                : null,
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 14),
-                          ),
-                          readOnly: isViewOnly,
-                          enabled: !isViewOnly,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            TextFormField(
-                              controller: billgstController,
-                              decoration: InputDecoration(
-                                labelText: "Billing GST No",
-                                hintText: "Billing GST No",
-                                border: const OutlineInputBorder(),
-                                suffixIcon: billgstController.text.isNotEmpty
-                                    ? IconButton(
-                                  icon:
-                                  const Icon(Icons.clear, size: 18),
-                                  onPressed: () {
-                                    setState(() {
-                                      billgstController.clear();
-                                      if (isSameAsSiteGST) {
-                                        isSameAsSiteGST = false;
-                                      }
-                                    });
-                                  },
-                                  padding: EdgeInsets.zero,
-                                  tooltip: 'Clear',
-                                )
-                                    : null,
-                                contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 16, vertical: 14),
-                              ),
-                              readOnly: isViewOnly,
-                              enabled: !isViewOnly,
-                            ),
-                            const SizedBox(height: 4),
-                            if (!isViewOnly) ...[
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Checkbox(
-                                    value: isSameAsSiteGST,
-                                    materialTapTargetSize:
-                                    MaterialTapTargetSize.shrinkWrap,
-                                    visualDensity: VisualDensity.compact,
-                                    onChanged: (value) {
-                                      setState(() {
-                                        isSameAsSiteGST = value ?? false;
-
-                                        if (isSameAsSiteGST) {
-                                          billgstController.text =
-                                              sitegstController.text;
-                                        } else {
-                                          billgstController.clear();
-                                        }
-                                      });
-                                    },
-                                  ),
-                                  const Text(
-                                    "Same as Site GST No",
-                                    style: TextStyle(fontSize: 12),
-                                  ),
-                                ],
-                              ),
-                            ]
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Date & Work Order Value
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: TextEditingController(
-                            text: efffectiveDate != null
-                                ? DateFormat('yyyy-MM-dd')
-                                .format(efffectiveDate!)
-                                : '',
-                          ),
-                          readOnly: true,
-                          decoration: InputDecoration(
-                            labelText: "Effective Date of Agreement",
-                            border: const OutlineInputBorder(),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 14,
-                            ),
-                            suffixIcon: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (efffectiveDate != null && !isViewOnly)
-                                  IconButton(
-                                    icon: const Icon(Icons.clear, size: 18),
-                                    onPressed: () {
-                                      setState(() {
-                                        efffectiveDate = null;
-                                      });
-                                    },
-                                    padding: EdgeInsets.zero,
-                                    tooltip: 'Clear date',
-                                  ),
-                                if (efffectiveDate == null && !isViewOnly)
-                                  Icon(
-                                    Icons.calendar_today,
-                                    color: AppColors.primary,
-                                    size: 20,
-                                  ),
-                              ],
-                            ),
-                          ),
-                          validator: (value) {
-                            if (efffectiveDate == null) {
-                              WidgetsBinding.instance
-                                  .addPostFrameCallback((_) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                        'Please select a agreement date'),
-                                    duration: Duration(seconds: 2),
-                                    backgroundColor: Colors.red,
-                                  ),
-                                );
-                              });
-                              return 'Please select a bill date';
-                            }
-                            return null;
-                          },
-                          onTap: isViewOnly
-                              ? null
-                              : () async {
-                            await _selectDate(context);
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: TextFormField(
-                          controller: workordervalueincludinggstController,
-                          keyboardType: TextInputType.number,
-                          inputFormatters: !isViewOnly
-                              ? [
-                            TextInputFormatter.withFunction(
-                                    (oldValue, newValue) {
-                                  if (newValue.text.isEmpty) {
-                                    return newValue;
-                                  }
-                                  String value =
-                                  newValue.text.replaceAll(',', '');
-                                  value = value.replaceAll(
-                                      RegExp(r'[^0-9]'), '');
-                                  if (value.isEmpty) {
-                                    return const TextEditingValue();
-                                  }
-                                  final formatter =
-                                  NumberFormat("#,##,##0", "en_IN");
-                                  final newText =
-                                  formatter.format(int.parse(value));
-                                  return TextEditingValue(
-                                    text: newText,
-                                    selection: TextSelection.collapsed(
-                                      offset: newText.length,
-                                    ),
-                                  );
-                                }),
-                          ]
-                              : null,
-                          readOnly: isViewOnly,
-                          enabled: !isViewOnly,
-                          decoration: InputDecoration(
-                            labelText: "Work order value including GST",
-                            hintText: "Work order value including GST",
-                            border: const OutlineInputBorder(),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 14,
-                            ),
-                            suffixIcon: workordervalueincludinggstController
-                                .text.isNotEmpty &&
-                                !isViewOnly
-                                ? IconButton(
-                              icon: const Icon(Icons.clear, size: 18),
-                              onPressed: () {
-                                setState(() {
-                                  workordervalueincludinggstController
-                                      .clear();
-                                });
-                              },
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear value',
-                            )
-                                : null,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Tenure & Liability Period
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: tenureController,
-                          decoration: InputDecoration(
-                            labelText: "Tenure of the project",
-                            hintText: "Tenure of the project",
-                            border: const OutlineInputBorder(),
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 14),
-                            suffixIcon: tenureController.text.isNotEmpty &&
-                                !isViewOnly
-                                ? IconButton(
-                              icon: const Icon(Icons.clear, size: 18),
-                              onPressed: () {
-                                setState(() {
-                                  tenureController.clear();
-                                });
-                              },
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear value',
-                            )
-                                : null,
-                          ),
-                          readOnly: isViewOnly,
-                          enabled: !isViewOnly,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: TextFormField(
-                          controller: liabilityController,
-                          decoration: InputDecoration(
-                            labelText: "Defect liability period",
-                            hintText: "Defect liability period",
-                            border: const OutlineInputBorder(),
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 14),
-                            suffixIcon: liabilityController.text.isNotEmpty &&
-                                !isViewOnly
-                                ? IconButton(
-                              icon: const Icon(Icons.clear, size: 18),
-                              onPressed: () {
-                                setState(() {
-                                  liabilityController.clear();
-                                });
-                              },
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear value',
-                            )
-                                : null,
-                          ),
-                          readOnly: isViewOnly,
-                          enabled: !isViewOnly,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Billing Details
-                  Text(
-                    'Billing Details',
-                    style: TextStyle(
-                        fontSize: 16, color: AppColors.primaryLight),
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Type of contract
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: contractController,
-                          decoration: InputDecoration(
-                            labelText: "Type of contract",
-                            hintText: "Type of contract",
-                            border: const OutlineInputBorder(),
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 14),
-                            suffixIcon: contractController.text.isNotEmpty &&
-                                !isViewOnly
-                                ? IconButton(
-                              icon: const Icon(Icons.clear, size: 18),
-                              onPressed: () {
-                                setState(() {
-                                  contractController.clear();
-                                });
-                              },
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear value',
-                            )
-                                : null,
-                          ),
-                          readOnly: isViewOnly,
-                          enabled: !isViewOnly,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: TextFormField(
-                          controller: methodofbillingController,
-                          decoration: InputDecoration(
-                            labelText: "Method of billing",
-                            hintText: "Method of billing",
-                            border: const OutlineInputBorder(),
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 14),
-                            suffixIcon: methodofbillingController
-                                .text.isNotEmpty &&
-                                !isViewOnly
-                                ? IconButton(
-                              icon: const Icon(Icons.clear, size: 18),
-                              onPressed: () {
-                                setState(() {
-                                  methodofbillingController.clear();
-                                });
-                              },
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear value',
-                            )
-                                : null,
-                          ),
-                          readOnly: isViewOnly,
-                          enabled: !isViewOnly,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Billing frequency & Milestones
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: billingfrequencyController,
-                          decoration: InputDecoration(
-                            labelText: "Billing frequency & payment terms",
-                            hintText: "Billing frequency & payment terms",
-                            border: const OutlineInputBorder(),
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 14),
-                            suffixIcon: billingfrequencyController
-                                .text.isNotEmpty &&
-                                !isViewOnly
-                                ? IconButton(
-                              icon: const Icon(Icons.clear, size: 18),
-                              onPressed: () {
-                                setState(() {
-                                  billingfrequencyController.clear();
-                                });
-                              },
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear value',
-                            )
-                                : null,
-                          ),
-                          readOnly: isViewOnly,
-                          enabled: !isViewOnly,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: TextFormField(
-                          controller: milestonesController,
-                          decoration: InputDecoration(
-                            labelText: "Milestones",
-                            hintText: "Milestones",
-                            border: const OutlineInputBorder(),
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 14),
-                            suffixIcon: milestonesController
-                                .text.isNotEmpty &&
-                                !isViewOnly
-                                ? IconButton(
-                              icon: const Icon(Icons.clear, size: 18),
-                              onPressed: () {
-                                setState(() {
-                                  milestonesController.clear();
-                                });
-                              },
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear value',
-                            )
-                                : null,
-                          ),
-                          readOnly: isViewOnly,
-                          enabled: !isViewOnly,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Retention & Bank guarantee
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: retentionController,
-                          decoration: InputDecoration(
-                            labelText: "Retention",
-                            hintText: "Retention",
-                            border: const OutlineInputBorder(),
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 14),
-                            suffixIcon: retentionController.text.isNotEmpty &&
-                                !isViewOnly
-                                ? IconButton(
-                              icon: const Icon(Icons.clear, size: 18),
-                              onPressed: () {
-                                setState(() {
-                                  retentionController.clear();
-                                });
-                              },
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear value',
-                            )
-                                : null,
-                          ),
-                          readOnly: isViewOnly,
-                          enabled: !isViewOnly,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: selectedbankreq,
-                          decoration:
-                          _inputDecoration("Bank guarantee requirements")
-                              .copyWith(
-                            suffixIcon: (!isViewOnly &&
-                                selectedbankreq != null)
-                                ? IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  selectedbankreq = null;
-                                });
-                              },
-                              icon: const Icon(Icons.clear, size: 18),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear selection',
-                            )
-                                : null,
-                          ),
-                          items: bankreq.map((status) {
-                            return DropdownMenuItem<String>(
-                              value: status,
-                              child: Text(status),
-                            );
-                          }).toList(),
-                          onChanged: isViewOnly
-                              ? null
-                              : (value) {
-                            setState(() {
-                              selectedbankreq = value;
-                            });
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Escalation & Tax Structure
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: selectedescl,
-                          decoration:
-                          _inputDecoration("Escalation & basic details")
-                              .copyWith(
-                            suffixIcon: (!isViewOnly && selectedescl != null)
-                                ? IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  selectedescl = null;
-                                });
-                              },
-                              icon: const Icon(Icons.clear, size: 18),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear selection',
-                            )
-                                : null,
-                          ),
-                          items: esclbas.map((status) {
-                            return DropdownMenuItem<String>(
-                              value: status,
-                              child: Text(status),
-                            );
-                          }).toList(),
-                          onChanged: isViewOnly
-                              ? null
-                              : (value) {
-                            setState(() {
-                              selectedescl = value;
-                            });
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: selectedtax,
-                          decoration:
-                          _inputDecoration("Tax structure changes")
-                              .copyWith(
-                            suffixIcon: (!isViewOnly && selectedtax != null)
-                                ? IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  selectedtax = null;
-                                });
-                              },
-                              icon: const Icon(Icons.clear, size: 18),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear selection',
-                            )
-                                : null,
-                          ),
-                          items: taxstructure.map((status) {
-                            return DropdownMenuItem<String>(
-                              value: status,
-                              child: Text(status),
-                            );
-                          }).toList(),
-                          onChanged: isViewOnly
-                              ? null
-                              : (value) {
-                            setState(() {
-                              selectedtax = value;
-                            });
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Scope clearance
-                  Text(
-                    'Scope clearance',
-                    style: TextStyle(
-                        fontSize: 16, color: AppColors.primaryLight),
-                  ),
-                  const SizedBox(height: 16),
-
-                  /// Scope of works
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      /// First Dropdown
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: workscope,
-                          decoration:
-                          _inputDecoration("Scope of works duly signed")
-                              .copyWith(
-                            suffixIcon: (!isViewOnly && workscope != null)
-                                ? IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  workscope = null;
-                                  selectedworkscope = null;
-                                  workscopeController.clear();
-                                });
-                              },
-                              icon: const Icon(Icons.clear, size: 18),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear selection',
-                            )
-                                : null,
-                          ),
-                          items: workscopesigned.map((status) {
-                            return DropdownMenuItem<String>(
-                              value: status,
-                              child: Text(status),
-                            );
-                          }).toList(),
-                          onChanged: isViewOnly
-                              ? null
-                              : (value) {
-                            setState(() {
-                              workscope = value;
-                              if (value == 'No') {
-                                selectedworkscope = null;
-                                workscopeController.text = "Nil";
-                              } else {
-                                workscopeController.clear();
-                              }
-                            });
-                          },
-                        ),
-                      ),
-
-                      /// Show Second Dropdown only when value is NOT "No"
-                      if (workscope != 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: selectedworkscope,
-                            decoration: _inputDecoration("").copyWith(
-                              suffixIcon: (!isViewOnly &&
-                                  selectedworkscope != null)
-                                  ? IconButton(
-                                onPressed: () {
-                                  setState(() {
-                                    selectedworkscope = null;
-                                  });
-                                },
-                                icon: const Icon(Icons.clear, size: 18),
-                                padding: EdgeInsets.zero,
-                                tooltip: 'Clear selection',
-                              )
-                                  : null,
-                            ),
-                            items: workscopeoption.map((status) {
-                              return DropdownMenuItem<String>(
-                                value: status,
-                                child: Text(status),
-                              );
-                            }).toList(),
-                            onChanged: isViewOnly
-                                ? null
-                                : (value) {
-                              setState(() {
-                                selectedworkscope = value;
-                              });
-                            },
-                          ),
-                        ),
-                      ],
-
-                      /// Show Remarks only when first dropdown = "No"
-                      if (workscope == 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: TextFormField(
-                            controller: workscopeController,
-                            readOnly: isViewOnly,
-                            enabled: !isViewOnly,
-                            onTap: () {
-                              if (workscopeController.text == "Nil") {
-                                workscopeController.clear();
-                              }
-                            },
-                            decoration: const InputDecoration(
-                              labelText: "Remarks",
-                              border: OutlineInputBorder(),
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 14,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Water Proofing
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      /// First Dropdown
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: waterproofing,
-                          decoration:
-                          _inputDecoration("Waterproofing Methodology")
-                              .copyWith(
-                            suffixIcon: (!isViewOnly && waterproofing != null)
-                                ? IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  waterproofing = null;
-                                  selectedwaterproffing = null;
-                                  waterproffingController.clear();
-                                });
-                              },
-                              icon: const Icon(Icons.clear, size: 18),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear selection',
-                            )
-                                : null,
-                          ),
-                          items: waterproofingsigned.map((status) {
-                            return DropdownMenuItem<String>(
-                              value: status,
-                              child: Text(status),
-                            );
-                          }).toList(),
-                          onChanged: isViewOnly
-                              ? null
-                              : (value) {
-                            setState(() {
-                              waterproofing = value;
-                              if (value == 'No') {
-                                selectedwaterproffing = null;
-                                waterproffingController.text = "Nil";
-                              } else {
-                                waterproffingController.clear();
-                              }
-                            });
-                          },
-                        ),
-                      ),
-
-                      /// Show Second Dropdown only when value is NOT "No"
-                      if (waterproofing != 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: selectedwaterproffing,
-                            decoration: _inputDecoration("").copyWith(
-                              suffixIcon: (!isViewOnly &&
-                                  selectedwaterproffing != null)
-                                  ? IconButton(
-                                onPressed: () {
-                                  setState(() {
-                                    selectedwaterproffing = null;
-                                  });
-                                },
-                                icon: const Icon(Icons.clear, size: 18),
-                                padding: EdgeInsets.zero,
-                                tooltip: 'Clear selection',
-                              )
-                                  : null,
-                            ),
-                            items: waterproofingoption.map((status) {
-                              return DropdownMenuItem<String>(
-                                value: status,
-                                child: Text(status),
-                              );
-                            }).toList(),
-                            onChanged: isViewOnly
-                                ? null
-                                : (value) {
-                              setState(() {
-                                selectedwaterproffing = value;
-                              });
-                            },
-                          ),
-                        ),
-                      ],
-
-                      /// Show Remarks only when first dropdown = "No"
-                      if (waterproofing == 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: TextFormField(
-                            controller: waterproffingController,
-                            readOnly: isViewOnly,
-                            enabled: !isViewOnly,
-                            onTap: () {
-                              if (waterproffingController.text == "Nil") {
-                                waterproffingController.clear();
-                              }
-                            },
-                            decoration: const InputDecoration(
-                              labelText: "Remarks",
-                              border: OutlineInputBorder(),
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 14,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Anti termite work
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      /// First Dropdown
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: antitermite,
-                          decoration:
-                          _inputDecoration("Anti termite work").copyWith(
-                            suffixIcon: (!isViewOnly && antitermite != null)
-                                ? IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  antitermite = null;
-                                  selectedantitermite = null;
-                                  antitermiteController.clear();
-                                });
-                              },
-                              icon: const Icon(Icons.clear, size: 18),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear selection',
-                            )
-                                : null,
-                          ),
-                          items: antitermitesigned.map((status) {
-                            return DropdownMenuItem<String>(
-                              value: status,
-                              child: Text(status),
-                            );
-                          }).toList(),
-                          onChanged: isViewOnly
-                              ? null
-                              : (value) {
-                            setState(() {
-                              antitermite = value;
-
-                              if (value == 'No') {
-                                selectedantitermite = null;
-                                antitermiteController.text = "Nil";
-                              } else {
-                                antitermiteController.clear();
-                              }
-                            });
-                          },
-                        ),
-                      ),
-
-                      /// Show Second Dropdown only when value is NOT "No"
-                      if (antitermite != 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: selectedantitermite,
-                            decoration: _inputDecoration("").copyWith(
-                              suffixIcon: (!isViewOnly &&
-                                  selectedantitermite != null)
-                                  ? IconButton(
-                                onPressed: () {
-                                  setState(() {
-                                    selectedantitermite = null;
-                                  });
-                                },
-                                icon: const Icon(Icons.clear, size: 18),
-                                padding: EdgeInsets.zero,
-                                tooltip: 'Clear selection',
-                              )
-                                  : null,
-                            ),
-                            items: antitermiteoption.map((status) {
-                              return DropdownMenuItem<String>(
-                                value: status,
-                                child: Text(status),
-                              );
-                            }).toList(),
-                            onChanged: isViewOnly
-                                ? null
-                                : (value) {
-                              setState(() {
-                                selectedantitermite = value;
-                              });
-                            },
-                          ),
-                        ),
-                      ],
-
-                      /// Show Remarks only when first dropdown = "No"
-                      if (antitermite == 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: TextFormField(
-                            controller: antitermiteController,
-                            readOnly: isViewOnly,
-                            enabled: !isViewOnly,
-                            onTap: () {
-                              if (antitermiteController.text == "Nil") {
-                                antitermiteController.clear();
-                              }
-                            },
-                            decoration: const InputDecoration(
-                              labelText: "Remarks",
-                              border: OutlineInputBorder(),
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 14,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Site access
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      /// First Dropdown
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: siteacc,
-                          decoration: _inputDecoration(
-                              "Site access & local site issues")
-                              .copyWith(
-                            suffixIcon: (!isViewOnly && siteacc != null)
-                                ? IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  siteacc = null;
-                                  selectedsiteacc = null;
-                                  siteaccController.clear();
-                                });
-                              },
-                              icon: const Icon(Icons.clear, size: 18),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear selection',
-                            )
-                                : null,
-                          ),
-                          items: siteaccsigned.map((status) {
-                            return DropdownMenuItem<String>(
-                              value: status,
-                              child: Text(status),
-                            );
-                          }).toList(),
-                          onChanged: isViewOnly
-                              ? null
-                              : (value) {
-                            setState(() {
-                              siteacc = value;
-
-                              if (value == 'No') {
-                                selectedsiteacc = null;
-                                siteaccController.text = "Nil";
-                              } else {
-                                siteaccController.clear();
-                              }
-                            });
-                          },
-                        ),
-                      ),
-
-                      /// Show Second Dropdown only when value is NOT "No"
-                      if (siteacc != 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: selectedsiteacc,
-                            decoration: _inputDecoration("").copyWith(
-                              suffixIcon: (!isViewOnly &&
-                                  selectedsiteacc != null)
-                                  ? IconButton(
-                                onPressed: () {
-                                  setState(() {
-                                    selectedsiteacc = null;
-                                  });
-                                },
-                                icon: const Icon(Icons.clear, size: 18),
-                                padding: EdgeInsets.zero,
-                                tooltip: 'Clear selection',
-                              )
-                                  : null,
-                            ),
-                            items: siteaccoption.map((status) {
-                              return DropdownMenuItem<String>(
-                                value: status,
-                                child: Text(status),
-                              );
-                            }).toList(),
-                            onChanged: isViewOnly
-                                ? null
-                                : (value) {
-                              setState(() {
-                                selectedsiteacc = value;
-                              });
-                            },
-                          ),
-                        ),
-                      ],
-
-                      /// Show Remarks only when first dropdown = "No"
-                      if (siteacc == 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: TextFormField(
-                            controller: siteaccController,
-                            readOnly: isViewOnly,
-                            enabled: !isViewOnly,
-                            onTap: () {
-                              if (siteaccController.text == "Nil") {
-                                siteaccController.clear();
-                              }
-                            },
-                            decoration: const InputDecoration(
-                              labelText: "Remarks",
-                              border: OutlineInputBorder(),
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 14,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Dewatering
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      /// First Dropdown
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: dewatering,
-                          decoration: _inputDecoration("Dewatering").copyWith(
-                            suffixIcon: (!isViewOnly && dewatering != null)
-                                ? IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  dewatering = null;
-                                  selecteddewatering = null;
-                                  dewateringController.clear();
-                                });
-                              },
-                              icon: const Icon(Icons.clear, size: 18),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear selection',
-                            )
-                                : null,
-                          ),
-                          items: dewateringsigned.map((status) {
-                            return DropdownMenuItem<String>(
-                              value: status,
-                              child: Text(status),
-                            );
-                          }).toList(),
-                          onChanged: isViewOnly
-                              ? null
-                              : (value) {
-                            setState(() {
-                              dewatering = value;
-
-                              if (value == 'No') {
-                                selecteddewatering = null;
-                                dewateringController.text = "Nil";
-                              } else {
-                                dewateringController.clear();
-                              }
-                            });
-                          },
-                        ),
-                      ),
-
-                      /// Show Second Dropdown only when value is NOT "No"
-                      if (dewatering != 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: selecteddewatering,
-                            decoration: _inputDecoration("").copyWith(
-                              suffixIcon: (!isViewOnly &&
-                                  selecteddewatering != null)
-                                  ? IconButton(
-                                onPressed: () {
-                                  setState(() {
-                                    selecteddewatering = null;
-                                  });
-                                },
-                                icon: const Icon(Icons.clear, size: 18),
-                                padding: EdgeInsets.zero,
-                                tooltip: 'Clear selection',
-                              )
-                                  : null,
-                            ),
-                            items: dewateringoption.map((status) {
-                              return DropdownMenuItem<String>(
-                                value: status,
-                                child: Text(status),
-                              );
-                            }).toList(),
-                            onChanged: isViewOnly
-                                ? null
-                                : (value) {
-                              setState(() {
-                                selecteddewatering = value;
-                              });
-                            },
-                          ),
-                        ),
-                      ],
-
-                      /// Show Remarks only when first dropdown = "No"
-                      if (dewatering == 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: TextFormField(
-                            controller: dewateringController,
-                            readOnly: isViewOnly,
-                            enabled: !isViewOnly,
-                            onTap: () {
-                              if (dewateringController.text == "Nil") {
-                                dewateringController.clear();
-                              }
-                            },
-                            decoration: const InputDecoration(
-                              labelText: "Remarks",
-                              border: OutlineInputBorder(),
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 14,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Electricity & Water
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      /// First Dropdown
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: electricitywater,
-                          decoration: _inputDecoration("Electricity & Water")
-                              .copyWith(
-                            suffixIcon: (!isViewOnly &&
-                                electricitywater != null)
-                                ? IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  electricitywater = null;
-                                  selectedelectricitywater = null;
-                                  electricitywaterController.clear();
-                                });
-                              },
-                              icon: const Icon(Icons.clear, size: 18),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear selection',
-                            )
-                                : null,
-                          ),
-                          items: electricitywatersigned.map((status) {
-                            return DropdownMenuItem<String>(
-                              value: status,
-                              child: Text(status),
-                            );
-                          }).toList(),
-                          onChanged: isViewOnly
-                              ? null
-                              : (value) {
-                            setState(() {
-                              electricitywater = value;
-
-                              if (value == 'No') {
-                                selectedelectricitywater = null;
-                                electricitywaterController.text = "Nil";
-                              } else {
-                                electricitywaterController.clear();
-                              }
-                            });
-                          },
-                        ),
-                      ),
-
-                      /// Show Second Dropdown only when value is NOT "No"
-                      if (electricitywater != 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: selectedelectricitywater,
-                            decoration: _inputDecoration("").copyWith(
-                              suffixIcon: (!isViewOnly &&
-                                  selectedelectricitywater != null)
-                                  ? IconButton(
-                                onPressed: () {
-                                  setState(() {
-                                    selectedelectricitywater = null;
-                                  });
-                                },
-                                icon: const Icon(Icons.clear, size: 18),
-                                padding: EdgeInsets.zero,
-                                tooltip: 'Clear selection',
-                              )
-                                  : null,
-                            ),
-                            items: electricitywateroption.map((status) {
-                              return DropdownMenuItem<String>(
-                                value: status,
-                                child: Text(status),
-                              );
-                            }).toList(),
-                            onChanged: isViewOnly
-                                ? null
-                                : (value) {
-                              setState(() {
-                                selectedelectricitywater = value;
-                              });
-                            },
-                          ),
-                        ),
-                      ],
-
-                      /// Show Remarks only when first dropdown = "No"
-                      if (electricitywater == 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: TextFormField(
-                            controller: electricitywaterController,
-                            readOnly: isViewOnly,
-                            enabled: !isViewOnly,
-                            onTap: () {
-                              if (electricitywaterController.text == "Nil") {
-                                electricitywaterController.clear();
-                              }
-                            },
-                            decoration: const InputDecoration(
-                              labelText: "Remarks",
-                              border: OutlineInputBorder(),
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 14,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Steel & Cement brands
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      /// First Dropdown
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: steelcement,
-                          decoration:
-                          _inputDecoration("Steel & Cement brands")
-                              .copyWith(
-                            suffixIcon: (!isViewOnly && steelcement != null)
-                                ? IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  steelcement = null;
-                                  selectedsteelcement = null;
-                                  steelcementController.clear();
-                                });
-                              },
-                              icon: const Icon(Icons.clear, size: 18),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear selection',
-                            )
-                                : null,
-                          ),
-                          items: steelcementsigned.map((status) {
-                            return DropdownMenuItem<String>(
-                              value: status,
-                              child: Text(status),
-                            );
-                          }).toList(),
-                          onChanged: isViewOnly
-                              ? null
-                              : (value) {
-                            setState(() {
-                              steelcement = value;
-
-                              if (value == 'No') {
-                                selectedsteelcement = null;
-                                steelcementController.text = "Nil";
-                              } else {
-                                steelcementController.clear();
-                              }
-                            });
-                          },
-                        ),
-                      ),
-
-                      /// Show Second Dropdown only when value is NOT "No"
-                      if (steelcement != 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: selectedsteelcement,
-                            decoration: _inputDecoration("").copyWith(
-                              suffixIcon: (!isViewOnly &&
-                                  selectedsteelcement != null)
-                                  ? IconButton(
-                                onPressed: () {
-                                  setState(() {
-                                    selectedsteelcement = null;
-                                  });
-                                },
-                                icon: const Icon(Icons.clear, size: 18),
-                                padding: EdgeInsets.zero,
-                                tooltip: 'Clear selection',
-                              )
-                                  : null,
-                            ),
-                            items: steelcementoption.map((status) {
-                              return DropdownMenuItem<String>(
-                                value: status,
-                                child: Text(status),
-                              );
-                            }).toList(),
-                            onChanged: isViewOnly
-                                ? null
-                                : (value) {
-                              setState(() {
-                                selectedsteelcement = value;
-                              });
-                            },
-                          ),
-                        ),
-                      ],
-
-                      /// Show Remarks only when first dropdown = "No"
-                      if (steelcement == 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: TextFormField(
-                            controller: steelcementController,
-                            readOnly: isViewOnly,
-                            enabled: !isViewOnly,
-                            onTap: () {
-                              if (steelcementController.text == "Nil") {
-                                steelcementController.clear();
-                              }
-                            },
-                            decoration: const InputDecoration(
-                              labelText: "Remarks",
-                              border: OutlineInputBorder(),
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 14,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Non tendered items plus % margin
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      /// First Dropdown
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: tendermargin,
-                          decoration: _inputDecoration(
-                              "Non tendered items plus % margin")
-                              .copyWith(
-                            suffixIcon: (!isViewOnly && tendermargin != null)
-                                ? IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  tendermargin = null;
-                                  selectedtendermargin = null;
-                                  tendermarginController.clear();
-                                });
-                              },
-                              icon: const Icon(Icons.clear, size: 18),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear selection',
-                            )
-                                : null,
-                          ),
-                          items: tendermarginsigned.map((status) {
-                            return DropdownMenuItem<String>(
-                              value: status,
-                              child: Text(status),
-                            );
-                          }).toList(),
-                          onChanged: isViewOnly
-                              ? null
-                              : (value) {
-                            setState(() {
-                              tendermargin = value;
-
-                              if (value == 'No') {
-                                selectedtendermargin = null;
-                                tendermarginController.text = "Nil";
-                              } else {
-                                tendermarginController.clear();
-                              }
-                            });
-                          },
-                        ),
-                      ),
-
-                      /// Show Second Dropdown only when value is NOT "No"
-                      if (tendermargin != 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: selectedtendermargin,
-                            decoration: _inputDecoration("").copyWith(
-                              suffixIcon: (!isViewOnly &&
-                                  selectedtendermargin != null)
-                                  ? IconButton(
-                                onPressed: () {
-                                  setState(() {
-                                    selectedtendermargin = null;
-                                  });
-                                },
-                                icon: const Icon(Icons.clear, size: 18),
-                                padding: EdgeInsets.zero,
-                                tooltip: 'Clear selection',
-                              )
-                                  : null,
-                            ),
-                            items: tendermarginoption.map((status) {
-                              return DropdownMenuItem<String>(
-                                value: status,
-                                child: Text(status),
-                              );
-                            }).toList(),
-                            onChanged: isViewOnly
-                                ? null
-                                : (value) {
-                              setState(() {
-                                selectedtendermargin = value;
-                              });
-                            },
-                          ),
-                        ),
-                      ],
-
-                      /// Show Remarks only when first dropdown = "No"
-                      if (tendermargin == 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: TextFormField(
-                            controller: tendermarginController,
-                            readOnly: isViewOnly,
-                            enabled: !isViewOnly,
-                            onTap: () {
-                              if (tendermarginController.text == "Nil") {
-                                tendermarginController.clear();
-                              }
-                            },
-                            decoration: const InputDecoration(
-                              labelText: "Remarks",
-                              border: OutlineInputBorder(),
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 14,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Soil excavation
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      /// First Dropdown
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: soil,
-                          decoration: _inputDecoration(
-                              "Soil excavation, storage & backfilling including royalties, hardrock & soft rock issues, sheet piling - as per site condition")
-                              .copyWith(
-                            suffixIcon: (!isViewOnly && soil != null)
-                                ? IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  soil = null;
-                                  selectedsoil = null;
-                                  soilController.clear();
-                                });
-                              },
-                              icon: const Icon(Icons.clear, size: 18),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear selection',
-                            )
-                                : null,
-                          ),
-                          items: soilsigned.map((status) {
-                            return DropdownMenuItem<String>(
-                              value: status,
-                              child: Text(status),
-                            );
-                          }).toList(),
-                          onChanged: isViewOnly
-                              ? null
-                              : (value) {
-                            setState(() {
-                              soil = value;
-
-                              if (value == 'No') {
-                                selectedsoil = null;
-                                soilController.text = "Nil";
-                              } else {
-                                soilController.clear();
-                              }
-                            });
-                          },
-                        ),
-                      ),
-
-                      /// Show Second Dropdown only when value is NOT "No"
-                      if (soil != 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: selectedsoil,
-                            decoration: _inputDecoration("").copyWith(
-                              suffixIcon: (!isViewOnly &&
-                                  selectedsoil != null)
-                                  ? IconButton(
-                                onPressed: () {
-                                  setState(() {
-                                    selectedsoil = null;
-                                  });
-                                },
-                                icon: const Icon(Icons.clear, size: 18),
-                                padding: EdgeInsets.zero,
-                                tooltip: 'Clear selection',
-                              )
-                                  : null,
-                            ),
-                            items: soiloption.map((status) {
-                              return DropdownMenuItem<String>(
-                                value: status,
-                                child: Text(status),
-                              );
-                            }).toList(),
-                            onChanged: isViewOnly
-                                ? null
-                                : (value) {
-                              setState(() {
-                                selectedsoil = value;
-                              });
-                            },
-                          ),
-                        ),
-                      ],
-
-                      /// Show Remarks only when first dropdown = "No"
-                      if (soil == 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: TextFormField(
-                            controller: soilController,
-                            readOnly: isViewOnly,
-                            enabled: !isViewOnly,
-                            onTap: () {
-                              if (soilController.text == "Nil") {
-                                soilController.clear();
-                              }
-                            },
-                            decoration: const InputDecoration(
-                              labelText: "Remarks",
-                              border: OutlineInputBorder(),
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 14,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///All statutory approvals for building
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      /// First Dropdown
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: statapproval,
-                          decoration: _inputDecoration(
-                              "All statutory approvals for building")
-                              .copyWith(
-                            suffixIcon: (!isViewOnly && statapproval != null)
-                                ? IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  statapproval = null;
-                                  selectedstatapproval = null;
-                                  statapprovalController.clear();
-                                });
-                              },
-                              icon: const Icon(Icons.clear, size: 18),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear selection',
-                            )
-                                : null,
-                          ),
-                          items: statapprovalsigned.map((status) {
-                            return DropdownMenuItem<String>(
-                              value: status,
-                              child: Text(status),
-                            );
-                          }).toList(),
-                          onChanged: isViewOnly
-                              ? null
-                              : (value) {
-                            setState(() {
-                              statapproval = value;
-
-                              if (value == 'No') {
-                                selectedstatapproval = null;
-                                statapprovalController.text = "Nil";
-                              } else {
-                                statapprovalController.clear();
-                              }
-                            });
-                          },
-                        ),
-                      ),
-
-                      /// Show Second Dropdown only when value is NOT "No"
-                      if (statapproval != 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: selectedstatapproval,
-                            decoration: _inputDecoration("").copyWith(
-                              suffixIcon: (!isViewOnly &&
-                                  selectedstatapproval != null)
-                                  ? IconButton(
-                                onPressed: () {
-                                  setState(() {
-                                    selectedstatapproval = null;
-                                  });
-                                },
-                                icon: const Icon(Icons.clear, size: 18),
-                                padding: EdgeInsets.zero,
-                                tooltip: 'Clear selection',
-                              )
-                                  : null,
-                            ),
-                            items: statapprovaloption.map((status) {
-                              return DropdownMenuItem<String>(
-                                value: status,
-                                child: Text(status),
-                              );
-                            }).toList(),
-                            onChanged: isViewOnly
-                                ? null
-                                : (value) {
-                              setState(() {
-                                selectedstatapproval = value;
-                              });
-                            },
-                          ),
-                        ),
-                      ],
-
-                      /// Show Remarks only when first dropdown = "No"
-                      if (statapproval == 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: TextFormField(
-                            controller: statapprovalController,
-                            readOnly: isViewOnly,
-                            enabled: !isViewOnly,
-                            onTap: () {
-                              if (statapprovalController.text == "Nil") {
-                                statapprovalController.clear();
-                              }
-                            },
-                            decoration: const InputDecoration(
-                              labelText: "Remarks",
-                              border: OutlineInputBorder(),
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 14,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Soil investigation / survey
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      /// First Dropdown
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: soilsurvey,
-                          decoration:
-                          _inputDecoration("Soil investigation / survey")
-                              .copyWith(
-                            suffixIcon: (!isViewOnly && soilsurvey != null)
-                                ? IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  soilsurvey = null;
-                                  selectedsoilsurvey = null;
-                                  soilsurveyController.clear();
-                                });
-                              },
-                              icon: const Icon(Icons.clear, size: 18),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear selection',
-                            )
-                                : null,
-                          ),
-                          items: soilsurveysigned.map((status) {
-                            return DropdownMenuItem<String>(
-                              value: status,
-                              child: Text(status),
-                            );
-                          }).toList(),
-                          onChanged: isViewOnly
-                              ? null
-                              : (value) {
-                            setState(() {
-                              soilsurvey = value;
-
-                              if (value == 'No') {
-                                selectedsoilsurvey = null;
-                                soilsurveyController.text = "Nil";
-                              } else {
-                                soilsurveyController.clear();
-                              }
-                            });
-                          },
-                        ),
-                      ),
-
-                      /// Show Second Dropdown only when value is NOT "No"
-                      if (soilsurvey != 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: selectedsoilsurvey,
-                            decoration: _inputDecoration("").copyWith(
-                              suffixIcon: (!isViewOnly &&
-                                  selectedsoilsurvey != null)
-                                  ? IconButton(
-                                onPressed: () {
-                                  setState(() {
-                                    selectedsoilsurvey = null;
-                                  });
-                                },
-                                icon: const Icon(Icons.clear, size: 18),
-                                padding: EdgeInsets.zero,
-                                tooltip: 'Clear selection',
-                              )
-                                  : null,
-                            ),
-                            items: soilsurveyoption.map((status) {
-                              return DropdownMenuItem<String>(
-                                value: status,
-                                child: Text(status),
-                              );
-                            }).toList(),
-                            onChanged: isViewOnly
-                                ? null
-                                : (value) {
-                              setState(() {
-                                selectedsoilsurvey = value;
-                              });
-                            },
-                          ),
-                        ),
-                      ],
-
-                      /// Show Remarks only when first dropdown = "No"
-                      if (soilsurvey == 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: TextFormField(
-                            controller: soilsurveyController,
-                            readOnly: isViewOnly,
-                            enabled: !isViewOnly,
-                            onTap: () {
-                              if (soilsurveyController.text == "Nil") {
-                                soilsurveyController.clear();
-                              }
-                            },
-                            decoration: const InputDecoration(
-                              labelText: "Remarks",
-                              border: OutlineInputBorder(),
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 14,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Barrication
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      /// First Dropdown
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: barrication,
-                          decoration:
-                          _inputDecoration("Barrication").copyWith(
-                            suffixIcon: (!isViewOnly && barrication != null)
-                                ? IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  barrication = null;
-                                  selectedbarrication = null;
-                                  barricationController.clear();
-                                });
-                              },
-                              icon: const Icon(Icons.clear, size: 18),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear selection',
-                            )
-                                : null,
-                          ),
-                          items: barricationsigned.map((status) {
-                            return DropdownMenuItem<String>(
-                              value: status,
-                              child: Text(status),
-                            );
-                          }).toList(),
-                          onChanged: isViewOnly
-                              ? null
-                              : (value) {
-                            setState(() {
-                              barrication = value;
-
-                              if (value == 'No') {
-                                selectedbarrication = null;
-                                barricationController.text = "Nil";
-                              } else {
-                                barricationController.clear();
-                              }
-                            });
-                          },
-                        ),
-                      ),
-
-                      /// Show Second Dropdown only when value is NOT "No"
-                      if (barrication != 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: selectedbarrication,
-                            decoration: _inputDecoration("").copyWith(
-                              suffixIcon: (!isViewOnly &&
-                                  selectedbarrication != null)
-                                  ? IconButton(
-                                onPressed: () {
-                                  setState(() {
-                                    selectedbarrication = null;
-                                  });
-                                },
-                                icon: const Icon(Icons.clear, size: 18),
-                                padding: EdgeInsets.zero,
-                                tooltip: 'Clear selection',
-                              )
-                                  : null,
-                            ),
-                            items: barricationoption.map((status) {
-                              return DropdownMenuItem<String>(
-                                value: status,
-                                child: Text(status),
-                              );
-                            }).toList(),
-                            onChanged: isViewOnly
-                                ? null
-                                : (value) {
-                              setState(() {
-                                selectedbarrication = value;
-                              });
-                            },
-                          ),
-                        ),
-                      ],
-
-                      /// Show Remarks only when first dropdown = "No"
-                      if (barrication == 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: TextFormField(
-                            controller: barricationController,
-                            readOnly: isViewOnly,
-                            enabled: !isViewOnly,
-                            onTap: () {
-                              if (barricationController.text == "Nil") {
-                                barricationController.clear();
-                              }
-                            },
-                            decoration: const InputDecoration(
-                              labelText: "Remarks",
-                              border: OutlineInputBorder(),
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 14,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Tree cutting / Demolition / Debris removal / EB & Utility line shifiting / Open well closing
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      /// First Dropdown
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: treecutting,
-                          decoration: _inputDecoration(
-                              "Tree cutting / Demolition / Debris removal / EB & Utility line shifiting / Open well closing")
-                              .copyWith(
-                            suffixIcon: (!isViewOnly && treecutting != null)
-                                ? IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  treecutting = null;
-                                  selectedtreecutting = null;
-                                  treecuttingController.clear();
-                                });
-                              },
-                              icon: const Icon(Icons.clear, size: 18),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear selection',
-                            )
-                                : null,
-                          ),
-                          items: treecuttingsigned.map((status) {
-                            return DropdownMenuItem<String>(
-                              value: status,
-                              child: Text(status),
-                            );
-                          }).toList(),
-                          onChanged: isViewOnly
-                              ? null
-                              : (value) {
-                            setState(() {
-                              treecutting = value;
-
-                              if (value == 'No') {
-                                selectedtreecutting = null;
-                                treecuttingController.text = "Nil";
-                              } else {
-                                treecuttingController.clear();
-                              }
-                            });
-                          },
-                        ),
-                      ),
-
-                      /// Show Second Dropdown only when value is NOT "No"
-                      if (treecutting != 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: selectedtreecutting,
-                            decoration: _inputDecoration("").copyWith(
-                              suffixIcon: (!isViewOnly &&
-                                  selectedtreecutting != null)
-                                  ? IconButton(
-                                onPressed: () {
-                                  setState(() {
-                                    selectedtreecutting = null;
-                                  });
-                                },
-                                icon: const Icon(Icons.clear, size: 18),
-                                padding: EdgeInsets.zero,
-                                tooltip: 'Clear selection',
-                              )
-                                  : null,
-                            ),
-                            items: treecuttingoption.map((status) {
-                              return DropdownMenuItem<String>(
-                                value: status,
-                                child: Text(status),
-                              );
-                            }).toList(),
-                            onChanged: isViewOnly
-                                ? null
-                                : (value) {
-                              setState(() {
-                                selectedtreecutting = value;
-                              });
-                            },
-                          ),
-                        ),
-                      ],
-
-                      /// Show Remarks only when first dropdown = "No"
-                      if (treecutting == 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: TextFormField(
-                            controller: treecuttingController,
-                            readOnly: isViewOnly,
-                            enabled: !isViewOnly,
-                            onTap: () {
-                              if (treecuttingController.text == "Nil") {
-                                treecuttingController.clear();
-                              }
-                            },
-                            decoration: const InputDecoration(
-                              labelText: "Remarks",
-                              border: OutlineInputBorder(),
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 14,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Labour accommodation
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      /// First Dropdown
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: labouracc,
-                          decoration: _inputDecoration("Labour accommodation")
-                              .copyWith(
-                            suffixIcon: (!isViewOnly && labouracc != null)
-                                ? IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  labouracc = null;
-                                  selectedlabouracc = null;
-                                  labouraccController.clear();
-                                });
-                              },
-                              icon: const Icon(Icons.clear, size: 18),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear selection',
-                            )
-                                : null,
-                          ),
-                          items: labouraccsigned.map((status) {
-                            return DropdownMenuItem<String>(
-                              value: status,
-                              child: Text(status),
-                            );
-                          }).toList(),
-                          onChanged: isViewOnly
-                              ? null
-                              : (value) {
-                            setState(() {
-                              labouracc = value;
-
-                              if (value == 'No') {
-                                selectedlabouracc = null;
-                                labouraccController.text = "Nil";
-                              } else {
-                                labouraccController.clear();
-                              }
-                            });
-                          },
-                        ),
-                      ),
-
-                      /// Show Second Dropdown only when value is NOT "No"
-                      if (labouracc != 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: selectedlabouracc,
-                            decoration: _inputDecoration("").copyWith(
-                              suffixIcon: (!isViewOnly &&
-                                  selectedlabouracc != null)
-                                  ? IconButton(
-                                onPressed: () {
-                                  setState(() {
-                                    selectedlabouracc = null;
-                                  });
-                                },
-                                icon: const Icon(Icons.clear, size: 18),
-                                padding: EdgeInsets.zero,
-                                tooltip: 'Clear selection',
-                              )
-                                  : null,
-                            ),
-                            items: labouraccoption.map((status) {
-                              return DropdownMenuItem<String>(
-                                value: status,
-                                child: Text(status),
-                              );
-                            }).toList(),
-                            onChanged: isViewOnly
-                                ? null
-                                : (value) {
-                              setState(() {
-                                selectedlabouracc = value;
-                              });
-                            },
-                          ),
-                        ),
-                      ],
-
-                      /// Show Remarks only when first dropdown = "No"
-                      if (labouracc == 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: TextFormField(
-                            controller: labouraccController,
-                            readOnly: isViewOnly,
-                            enabled: !isViewOnly,
-                            onTap: () {
-                              if (labouraccController.text == "Nil") {
-                                labouraccController.clear();
-                              }
-                            },
-                            decoration: const InputDecoration(
-                              labelText: "Remarks",
-                              border: OutlineInputBorder(),
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 14,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Brick work internal & external
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      /// First Dropdown
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: brickwork,
-                          decoration: _inputDecoration(
-                              "Brick work internal & external")
-                              .copyWith(
-                            suffixIcon: (!isViewOnly && brickwork != null)
-                                ? IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  brickwork = null;
-                                  selectedbrickwork = null;
-                                  brickworkController.clear();
-                                });
-                              },
-                              icon: const Icon(Icons.clear, size: 18),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear selection',
-                            )
-                                : null,
-                          ),
-                          items: brickworksigned.map((status) {
-                            return DropdownMenuItem<String>(
-                              value: status,
-                              child: Text(status),
-                            );
-                          }).toList(),
-                          onChanged: isViewOnly
-                              ? null
-                              : (value) {
-                            setState(() {
-                              brickwork = value;
-
-                              if (value == 'No') {
-                                selectedbrickwork = null;
-                                brickworkController.text = "Nil";
-                              } else {
-                                brickworkController.clear();
-                              }
-                            });
-                          },
-                        ),
-                      ),
-
-                      /// Show Second Dropdown only when value is NOT "No"
-                      if (brickwork != 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: selectedbrickwork,
-                            decoration: _inputDecoration("").copyWith(
-                              suffixIcon: (!isViewOnly &&
-                                  selectedbrickwork != null)
-                                  ? IconButton(
-                                onPressed: () {
-                                  setState(() {
-                                    selectedbrickwork = null;
-                                  });
-                                },
-                                icon: const Icon(Icons.clear, size: 18),
-                                padding: EdgeInsets.zero,
-                                tooltip: 'Clear selection',
-                              )
-                                  : null,
-                            ),
-                            items: brickworkoption.map((status) {
-                              return DropdownMenuItem<String>(
-                                value: status,
-                                child: Text(status),
-                              );
-                            }).toList(),
-                            onChanged: isViewOnly
-                                ? null
-                                : (value) {
-                              setState(() {
-                                selectedbrickwork = value;
-                              });
-                            },
-                          ),
-                        ),
-                      ],
-
-                      /// Show Remarks only when first dropdown = "No"
-                      if (brickwork == 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: TextFormField(
-                            controller: brickworkController,
-                            readOnly: isViewOnly,
-                            enabled: !isViewOnly,
-                            onTap: () {
-                              if (brickworkController.text == "Nil") {
-                                brickworkController.clear();
-                              }
-                            },
-                            decoration: const InputDecoration(
-                              labelText: "Remarks",
-                              border: OutlineInputBorder(),
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 14,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Site security
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      /// First Dropdown
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: sitesec,
-                          decoration:
-                          _inputDecoration("Site security").copyWith(
-                            suffixIcon: (!isViewOnly && sitesec != null)
-                                ? IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  sitesec = null;
-                                  selectedsitesec = null;
-                                  sitesecController.clear();
-                                });
-                              },
-                              icon: const Icon(Icons.clear, size: 18),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear selection',
-                            )
-                                : null,
-                          ),
-                          items: sitesecsigned.map((status) {
-                            return DropdownMenuItem<String>(
-                              value: status,
-                              child: Text(status),
-                            );
-                          }).toList(),
-                          onChanged: isViewOnly
-                              ? null
-                              : (value) {
-                            setState(() {
-                              sitesec = value;
-
-                              if (value == 'No') {
-                                selectedsitesec = null;
-                                sitesecController.text = "Nil";
-                              } else {
-                                sitesecController.clear();
-                              }
-                            });
-                          },
-                        ),
-                      ),
-
-                      /// Show Second Dropdown only when value is NOT "No"
-                      if (sitesec != 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: selectedsitesec,
-                            decoration: _inputDecoration("").copyWith(
-                              suffixIcon: (!isViewOnly &&
-                                  selectedsitesec != null)
-                                  ? IconButton(
-                                onPressed: () {
-                                  setState(() {
-                                    selectedsitesec = null;
-                                  });
-                                },
-                                icon: const Icon(Icons.clear, size: 18),
-                                padding: EdgeInsets.zero,
-                                tooltip: 'Clear selection',
-                              )
-                                  : null,
-                            ),
-                            items: sitesecoption.map((status) {
-                              return DropdownMenuItem<String>(
-                                value: status,
-                                child: Text(status),
-                              );
-                            }).toList(),
-                            onChanged: isViewOnly
-                                ? null
-                                : (value) {
-                              setState(() {
-                                selectedsitesec = value;
-                              });
-                            },
-                          ),
-                        ),
-                      ],
-
-                      /// Show Remarks only when first dropdown = "No"
-                      if (sitesec == 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: TextFormField(
-                            controller: sitesecController,
-                            readOnly: isViewOnly,
-                            enabled: !isViewOnly,
-                            onTap: () {
-                              if (sitesecController.text == "Nil") {
-                                sitesecController.clear();
-                              }
-                            },
-                            decoration: const InputDecoration(
-                              labelText: "Remarks",
-                              border: OutlineInputBorder(),
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 14,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Lighting arrangements
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      /// First Dropdown
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: lightarr,
-                          decoration:
-                          _inputDecoration("Lighting arrangements")
-                              .copyWith(
-                            suffixIcon: (!isViewOnly && lightarr != null)
-                                ? IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  lightarr = null;
-                                  selectedlightarr = null;
-                                  lightarrController.clear();
-                                });
-                              },
-                              icon: const Icon(Icons.clear, size: 18),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear selection',
-                            )
-                                : null,
-                          ),
-                          items: lightarrsigned.map((status) {
-                            return DropdownMenuItem<String>(
-                              value: status,
-                              child: Text(status),
-                            );
-                          }).toList(),
-                          onChanged: isViewOnly
-                              ? null
-                              : (value) {
-                            setState(() {
-                              lightarr = value;
-
-                              if (value == 'No') {
-                                selectedlightarr = null;
-                                lightarrController.text = "Nil";
-                              } else {
-                                lightarrController.clear();
-                              }
-                            });
-                          },
-                        ),
-                      ),
-
-                      /// Show Second Dropdown only when value is NOT "No"
-                      if (lightarr != 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: selectedlightarr,
-                            decoration: _inputDecoration("").copyWith(
-                              suffixIcon: (!isViewOnly &&
-                                  selectedlightarr != null)
-                                  ? IconButton(
-                                onPressed: () {
-                                  setState(() {
-                                    selectedlightarr = null;
-                                  });
-                                },
-                                icon: const Icon(Icons.clear, size: 18),
-                                padding: EdgeInsets.zero,
-                                tooltip: 'Clear selection',
-                              )
-                                  : null,
-                            ),
-                            items: lightarroption.map((status) {
-                              return DropdownMenuItem<String>(
-                                value: status,
-                                child: Text(status),
-                              );
-                            }).toList(),
-                            onChanged: isViewOnly
-                                ? null
-                                : (value) {
-                              setState(() {
-                                selectedlightarr = value;
-                              });
-                            },
-                          ),
-                        ),
-                      ],
-
-                      /// Show Remarks only when first dropdown = "No"
-                      if (lightarr == 'No') ...[
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: TextFormField(
-                            controller: lightarrController,
-                            readOnly: isViewOnly,
-                            enabled: !isViewOnly,
-                            onTap: () {
-                              if (lightarrController.text == "Nil") {
-                                lightarrController.clear();
-                              }
-                            },
-                            decoration: const InputDecoration(
-                              labelText: "Remarks",
-                              border: OutlineInputBorder(),
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 14,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Legal aspects
-                  Text(
-                    'Legal aspects',
-                    style: TextStyle(
-                        fontSize: 16, color: AppColors.primaryLight),
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Force majeure conditions & Arbitration clause
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      /// First Dropdown
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: forcemaj,
-                          decoration:
-                          _inputDecoration("Force majeure conditions")
-                              .copyWith(
-                            suffixIcon: (!isViewOnly && forcemaj != null)
-                                ? IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  forcemaj = null;
-                                  selectedforcemaj = null;
-                                });
-                              },
-                              icon: const Icon(Icons.clear, size: 18),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear selection',
-                            )
-                                : null,
-                          ),
-                          items: forcemajsigned.map((status) {
-                            return DropdownMenuItem<String>(
-                              value: status,
-                              child: Text(status),
-                            );
-                          }).toList(),
-                          onChanged: isViewOnly
-                              ? null
-                              : (value) {
-                            setState(() {
-                              forcemaj = value;
-
-                              if (value == 'No') {
-                                selectedforcemaj = null;
-                              }
-                            });
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: arbitration,
-                          decoration:
-                          _inputDecoration("Arbitration clause").copyWith(
-                            suffixIcon: (!isViewOnly && arbitration != null)
-                                ? IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  arbitration = null;
-                                  selectedarbitration = null;
-                                });
-                              },
-                              icon: const Icon(Icons.clear, size: 18),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear selection',
-                            )
-                                : null,
-                          ),
-                          items: arbitrationsigned.map((status) {
-                            return DropdownMenuItem<String>(
-                              value: status,
-                              child: Text(status),
-                            );
-                          }).toList(),
-                          onChanged: isViewOnly
-                              ? null
-                              : (value) {
-                            setState(() {
-                              arbitration = value;
-
-                              if (value == 'No') {
-                                selectedarbitration = null;
-                              }
-                            });
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Labour compliance including insurance
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: labourcomp,
-                          decoration:
-                          _inputDecoration("Lab comp incl ins").copyWith(
-                            suffixIcon: (!isViewOnly && labourcomp != null)
-                                ? IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  labourcomp = null;
-                                  selectedlabourcomp = null;
-                                });
-                              },
-                              icon: const Icon(Icons.clear, size: 18),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear selection',
-                            )
-                                : null,
-                          ),
-                          items: labourcompsigned.map((status) {
-                            return DropdownMenuItem<String>(
-                              value: status,
-                              child: Text(status),
-                            );
-                          }).toList(),
-                          onChanged: isViewOnly
-                              ? null
-                              : (value) {
-                            setState(() {
-                              labourcomp = value;
-
-                              if (value == 'No') {
-                                selectedlabourcomp = null;
-                              }
-                            });
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Liquidated damages & Stability certificate clause
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      /// First Dropdown
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: liqdamage,
-                          decoration:
-                          _inputDecoration("Liq damages").copyWith(
-                            suffixIcon: (!isViewOnly && liqdamage != null)
-                                ? IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  liqdamage = null;
-                                  selectedliqdamage = null;
-                                });
-                              },
-                              icon: const Icon(Icons.clear, size: 18),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear selection',
-                            )
-                                : null,
-                          ),
-                          items: liqdamagesigned.map((status) {
-                            return DropdownMenuItem<String>(
-                              value: status,
-                              child: Text(status),
-                            );
-                          }).toList(),
-                          onChanged: isViewOnly
-                              ? null
-                              : (value) {
-                            setState(() {
-                              liqdamage = value;
-
-                              if (value == 'No') {
-                                selectedliqdamage = null;
-                              }
-                            });
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: stability,
-                          decoration:
-                          _inputDecoration("Stability certificate clause")
-                              .copyWith(
-                            suffixIcon: (!isViewOnly && stability != null)
-                                ? IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  stability = null;
-                                  selectedstability = null;
-                                });
-                              },
-                              icon: const Icon(Icons.clear, size: 18),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear selection',
-                            )
-                                : null,
-                          ),
-                          items: stabilitysigned.map((status) {
-                            return DropdownMenuItem<String>(
-                              value: status,
-                              child: Text(status),
-                            );
-                          }).toList(),
-                          onChanged: isViewOnly
-                              ? null
-                              : (value) {
-                            setState(() {
-                              stability = value;
-
-                              if (value == 'No') {
-                                selectedstability = null;
-                              }
-                            });
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Other remarks
-                  Text(
-                    'Other remarks',
-                    style: TextStyle(
-                        fontSize: 16, color: AppColors.primaryLight),
-                  ),
-                  const SizedBox(height: 16),
-
-                  /// Grout - Teemax approval & Expansion joint requirements
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      /// First Dropdown (Grout)
-                      Expanded(
-                        flex: 1,
-                        child: DropdownButtonFormField<String>(
-                          value: grout,
-                          decoration: _inputDecoration(
-                            "Grout - Teemax approval",
-                          ).copyWith(
-                            suffixIcon: (!isViewOnly && grout != null)
-                                ? IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  grout = null;
-                                  selectedgrout = null;
-                                });
-                              },
-                              icon: const Icon(Icons.clear, size: 18),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear selection',
-                            )
-                                : null,
-                          ),
-                          items: groutsigned.map((status) {
-                            return DropdownMenuItem<String>(
-                              value: status,
-                              child: Text(status),
-                            );
-                          }).toList(),
-                          onChanged: isViewOnly
-                              ? null
-                              : (value) {
-                            setState(() {
-                              grout = value;
-                              if (value == 'No') {
-                                selectedgrout = null;
-                              }
-                            });
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-
-                      /// Second Dropdown (Joint Requirement)
-                      Expanded(
-                        flex: 1,
-                        child: DropdownButtonFormField<String>(
-                          value: jointreq,
-                          decoration: _inputDecoration(
-                            "Expansion joint requirements",
-                          ).copyWith(
-                            suffixIcon: (!isViewOnly && jointreq != null)
-                                ? IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  jointreq = null;
-                                  selectedjointreq = null;
-                                  jointreqController.clear();
-                                });
-                              },
-                              icon: const Icon(Icons.clear, size: 18),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear selection',
-                            )
-                                : null,
-                          ),
-                          items: jointreqsigned.map((status) {
-                            return DropdownMenuItem<String>(
-                              value: status,
-                              child: Text(status),
-                            );
-                          }).toList(),
-                          onChanged: isViewOnly
-                              ? null
-                              : (value) {
-                            setState(() {
-                              jointreq = value;
-                              if (value == 'No') {
-                                selectedjointreq = null;
-                                jointreqController.text = "Nil";
-                              } else {
-                                jointreqController.clear();
-                              }
-                            });
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-
-                      /// Third Field (Remarks or Dropdown based on jointreq)
-                      Expanded(
-                        flex: 1,
-                        child: jointreq == 'No'
-                            ? TextFormField(
-                          controller: jointreqController,
-                          readOnly: isViewOnly,
-                          enabled: !isViewOnly,
-                          onTap: () {
-                            if (!isViewOnly &&
-                                jointreqController.text == "Nil") {
-                              jointreqController.clear();
-                            }
-                          },
-                          decoration: InputDecoration(
-                            labelText: "Remarks",
-                            border: const OutlineInputBorder(),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 14,
-                            ),
-                            suffixIcon: !isViewOnly &&
-                                jointreqController
-                                    .text.isNotEmpty &&
-                                jointreqController.text != "Nil"
-                                ? IconButton(
-                              icon: const Icon(Icons.clear,
-                                  size: 18),
-                              onPressed: () {
-                                setState(() {
-                                  jointreqController.clear();
-                                });
-                              },
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear remarks',
-                            )
-                                : null,
-                          ),
-                        )
-                            : DropdownButtonFormField<String>(
-                          value: selectedjointreq,
-                          decoration: _inputDecoration("").copyWith(
-                            suffixIcon: (!isViewOnly &&
-                                selectedjointreq != null)
-                                ? IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  selectedjointreq = null;
-                                });
-                              },
-                              icon: const Icon(Icons.clear,
-                                  size: 18),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear selection',
-                            )
-                                : null,
-                          ),
-                          items: jointreqoption.map((status) {
-                            return DropdownMenuItem<String>(
-                              value: status,
-                              child: Text(status),
-                            );
-                          }).toList(),
-                          onChanged: isViewOnly
-                              ? null
-                              : (value) {
-                            setState(() {
-                              selectedjointreq = value;
-                            });
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Idle Charges & Third party tests
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      /// First Dropdown
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: idlecharg,
-                          decoration:
-                          _inputDecoration("Idle Charges").copyWith(
-                            suffixIcon: (!isViewOnly && idlecharg != null)
-                                ? IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  idlecharg = null;
-                                  selectedidlecharg = null;
-                                });
-                              },
-                              icon: const Icon(Icons.clear, size: 18),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear selection',
-                            )
-                                : null,
-                          ),
-                          items: idlechargsigned.map((status) {
-                            return DropdownMenuItem<String>(
-                              value: status,
-                              child: Text(status),
-                            );
-                          }).toList(),
-                          onChanged: isViewOnly
-                              ? null
-                              : (value) {
-                            setState(() {
-                              idlecharg = value;
-
-                              if (value == 'No') {
-                                selectedidlecharg = null;
-                              }
-                            });
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: thirdpartytest,
-                          decoration:
-                          _inputDecoration("Third party tests").copyWith(
-                            suffixIcon: (!isViewOnly &&
-                                thirdpartytest != null)
-                                ? IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  thirdpartytest = null;
-                                  selectedthirdpartytest = null;
-                                });
-                              },
-                              icon: const Icon(Icons.clear, size: 18),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear selection',
-                            )
-                                : null,
-                          ),
-                          items: thirdpartytestsigned.map((status) {
-                            return DropdownMenuItem<String>(
-                              value: status,
-                              child: Text(status),
-                            );
-                          }).toList(),
-                          onChanged: isViewOnly
-                              ? null
-                              : (value) {
-                            setState(() {
-                              thirdpartytest = value;
-
-                              if (value == 'No') {
-                                selectedthirdpartytest = null;
-                              }
-                            });
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  ///Submit & Update Button
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Expanded(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                AppColors.primary,
-                                AppColors.primaryDark
-                              ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(10),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black26,
-                                blurRadius: 5,
-                                offset: Offset(2, 4),
-                              ),
-                            ],
-                          ),
-                          child: InkWell(
-                            onTap: () async {
-                              if (_formKey.currentState!.validate()) {
-                                await insertSalesChecklist();
-                              }
-                            },
-                            borderRadius: BorderRadius.circular(10),
-                            child: Padding(
-                              padding: EdgeInsets.symmetric(vertical: 15),
-                              child: Center(
-                                child: Text(
-                                  isEditing ? 'Update' : 'Submit',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  )
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    ),
-  );
-}*/
+Future<io.File> _saveToFile(String name, List<int> bytes) async {
+  final tempDir = await getTemporaryDirectory();
+  final file = io.File('${tempDir.path}/$name');
+  return await file.writeAsBytes(bytes);
+}

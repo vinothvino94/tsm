@@ -5,7 +5,11 @@ import '../../widgets/common_menu_screen.dart';
 import 'salesflow_menu.dart';
 
 class SalesMenuScreen extends StatefulWidget {
-  const SalesMenuScreen({super.key});
+  final bool isSuperAdmin;
+  const SalesMenuScreen({
+    super.key,
+    this.isSuperAdmin = false,
+  });
 
   @override
   State<SalesMenuScreen> createState() => _SalesMenuScreenState();
@@ -44,7 +48,10 @@ class _SalesMenuScreenState extends State<SalesMenuScreen> {
       case 'Sales Flow':
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => Billingmenu()),
+          MaterialPageRoute(
+              builder: (_) => SalesflowMenu(
+                    isSuperAdmin: widget.isSuperAdmin,
+                  )),
         );
         break;
 
