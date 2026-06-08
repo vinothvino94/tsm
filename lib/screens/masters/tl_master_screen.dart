@@ -152,6 +152,8 @@ class _TlMasterScreenState extends State<TlMasterScreen> {
         return 'DESIGNING';
       case '2':
         return 'DRAFTING';
+      case '3':
+        return 'SALES';
       default:
         return 'UNKNOWN';
     }

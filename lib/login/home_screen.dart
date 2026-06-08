@@ -879,14 +879,14 @@ class _HomeScreenState extends State<HomeScreen>
                                   isSelected: _selectedCardIndex ==
                                       (_canAccessReports ? 3 : 1),
                                 ),
-                              if (_canAccessReports || !_hasSalesAccess)
+                              if (_canAccessReports)
                                 _buildMenuCard(
                                   label: 'Reports',
                                   icon: Icons.bar_chart,
                                   onTap: () => _handleCardTap(4),
                                   isSelected: _selectedCardIndex == 4,
                                 ),
-                              if (_canAccessReports || !_hasSalesAccess)
+                              if (_canAccessReports)
                                 _buildMenuCard(
                                   label: 'Summary Reports',
                                   icon: Icons.analytics,
