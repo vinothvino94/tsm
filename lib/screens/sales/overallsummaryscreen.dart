@@ -719,21 +719,26 @@ class _OverAllSummaryScreenState extends State<OverAllSummaryScreen> {
             (b.whamnt ?? 0) +
             (b.dedamnt ?? 0));
 
+// Calculate total Billed amount (Bill Amount + GST)
+    final totalBilled = totalBillAmount + totalGST;
+// Calculate Net Receivable (Billed - Total Deductions)
+    final totalNetReceivable = totalBilled - totalAllDeductions;
+
     final List<String> totalRow = [
-      '',
-      '',
-      'Total',
-      indianFormat.format(totalBillAmount),
-      indianFormat.format(totalGST),
-      indianFormat.format(item.billed),
-      indianFormat.format(totalIT),
-      indianFormat.format(totalRetn),
-      indianFormat.format(totalDed),
-      indianFormat.format(totalAllDeductions),
-      indianFormat.format(item.billed - totalAllDeductions),
-      indianFormat.format(item.recamnt ?? 0),
-      '',
-      indianFormat.format(item.balanceAmnt),
+      '', //bill.no
+      '', //date
+      'Total', //total
+      indianFormat.format(totalBillAmount), //amount
+      indianFormat.format(totalGST), //gst
+      indianFormat.format(totalBilled), //totalvalue (Bill Amount + GST)
+      indianFormat.format(totalIT), //it
+      indianFormat.format(totalRetn), //retention
+      indianFormat.format(totalDed), //other deduction
+      indianFormat.format(totalAllDeductions), //total deduction
+      indianFormat.format(totalNetReceivable), //net receivable
+      indianFormat.format(item.recamnt ?? 0), //received
+      '', //date
+      indianFormat.format(item.balanceAmnt), //outstanding
     ];
 
     pdf.addPage(
@@ -1587,13 +1592,13 @@ class _OverAllSummaryScreenState extends State<OverAllSummaryScreen> {
               // ── Enhanced Header ──
               Container(
                 padding: const EdgeInsets.fromLTRB(20, 18, 16, 14),
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   gradient: LinearGradient(
                     colors: [AppColors.primary, AppColors.primaryDark],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
-                  borderRadius: const BorderRadius.only(
+                  borderRadius: BorderRadius.only(
                     topLeft: Radius.circular(20),
                     topRight: Radius.circular(20),
                   ),
@@ -1838,7 +1843,7 @@ class _OverAllSummaryScreenState extends State<OverAllSummaryScreen> {
     );
   }
 
-  Widget _buildProjectDetailsTable(
+  /*Widget buildProjectDetailsTable(
     SalesBillingSummaryModel item,
     NumberFormat indianFormat,
     List<SalesBillingModel> billRows,
@@ -2110,6 +2115,307 @@ class _OverAllSummaryScreenState extends State<OverAllSummaryScreen> {
                     _totalNumCell(indianFormat.format(item.recamnt ?? 0),
                         color: Colors.green.shade800),
                     _emptyCell(),
+                    _totalNumCell(indianFormat.format(item.balanceAmnt ?? 0),
+                        color: (item.balanceAmnt ?? 0) > 0
+                            ? Colors.deepOrange.shade700
+                            : Colors.green.shade700),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }*/
+
+  Widget _buildProjectDetailsTable(
+    SalesBillingSummaryModel item,
+    NumberFormat indianFormat,
+    List<SalesBillingModel> billRows,
+  ) {
+    final headers = [
+      'Bill No',
+      'Date',
+      'Description',
+      'Amount',
+      'GST',
+      'Total Value',
+      'IT',
+      'Retention',
+      'Other Deduction/Material',
+      'Total Deduction',
+      'Net Receivable',
+      'Net Amount Received',
+      'Date',
+      'Outstanding',
+    ];
+
+    final totalBillAmount = billRows.fold(0.0, (s, b) => s + (b.billamnt ?? 0));
+    final totalGST = billRows.fold(0.0, (s, b) => s + (b.gstamnt ?? 0));
+    final totalIT = billRows.fold(0.0, (s, b) => s + (b.itamnt ?? 0));
+    final totalRetn = billRows.fold(0.0, (s, b) => s + (b.retnamnt ?? 0));
+    final totalDed = billRows.fold(0.0, (s, b) => s + (b.dedamnt ?? 0));
+    final totalAllDeductions = billRows.fold(
+      0.0,
+      (s, b) =>
+          s +
+          (b.itamnt ?? 0) +
+          (b.retnamnt ?? 0) +
+          (b.whamnt ?? 0) +
+          (b.dedamnt ?? 0),
+    );
+
+    // ✅ Calculate total Billed amount (Bill Amount + GST)
+    final totalBilled = totalBillAmount + totalGST;
+    // ✅ Calculate Net Receivable (Billed - Total Deductions)
+    final totalNetReceivable = totalBilled - totalAllDeductions;
+
+    // ── font sizes ──
+    const double headerFs = 12.5;
+    const double cellFs = 12.0;
+    const double totalFs = 13.0;
+
+    DataCell _numCell(String text, {Color? color, bool bold = false}) =>
+        DataCell(
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: cellFs,
+                fontWeight: bold ? FontWeight.w600 : FontWeight.normal,
+                color: color,
+              ),
+              textAlign: TextAlign.right,
+            ),
+          ),
+        );
+
+    DataCell _totalNumCell(String text, {Color? color}) => DataCell(
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: totalFs,
+                fontWeight: FontWeight.bold,
+                color: color ?? Colors.blueGrey.shade800,
+              ),
+              textAlign: TextAlign.right,
+            ),
+          ),
+        );
+
+    DataCell _emptyCell() => DataCell(
+          const SizedBox.shrink(),
+        );
+
+    return Card(
+      margin: const EdgeInsets.all(6),
+      elevation: 3,
+      shadowColor: Colors.black.withOpacity(0.12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.vertical,
+            child: DataTable(
+              headingRowColor: WidgetStateProperty.all(
+                AppColors.primary.withOpacity(0.10),
+              ),
+              headingRowHeight: 48,
+              dataRowMinHeight: 44,
+              dataRowMaxHeight: 52,
+              columnSpacing: 18,
+              horizontalMargin: 12,
+              dividerThickness: 0.6,
+              border: TableBorder(
+                horizontalInside:
+                    BorderSide(color: Colors.grey.shade200, width: 0.8),
+                verticalInside:
+                    BorderSide(color: Colors.grey.shade200, width: 0.6),
+                top: BorderSide(color: Colors.grey.shade300, width: 1),
+                bottom: BorderSide(color: Colors.grey.shade300, width: 1),
+                left: BorderSide(color: Colors.grey.shade300, width: 1),
+                right: BorderSide(color: Colors.grey.shade300, width: 1),
+              ),
+              columns: headers
+                  .map((h) => DataColumn(
+                        label: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 6, horizontal: 2),
+                          child: Text(
+                            h,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: headerFs,
+                              color: AppColors.primary,
+                              letterSpacing: 0.2,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ))
+                  .toList(),
+              rows: [
+                // ── Data rows ──
+                ...billRows.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final bill = entry.value;
+
+                  final totalDeduction = (bill.itamnt ?? 0) +
+                      (bill.retnamnt ?? 0) +
+                      (bill.whamnt ?? 0) +
+                      (bill.dedamnt ?? 0);
+                  final netReceivable =
+                      (bill.billtotamnt ?? 0) - totalDeduction;
+                  final outstanding = netReceivable - (bill.recamnt ?? 0);
+
+                  return DataRow(
+                    color: WidgetStateProperty.all(
+                      index % 2 == 0 ? Colors.white : const Color(0xFFF8FAFF),
+                    ),
+                    cells: [
+                      // Bill No
+                      DataCell(Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Text(bill.billno ?? '',
+                            style: TextStyle(
+                                fontSize: cellFs,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.primary)),
+                      )),
+                      // Date
+                      DataCell(Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Text(
+                          bill.billdate != null
+                              ? _formatDate(bill.billdate, includeTime: false)
+                              : '—',
+                          style: TextStyle(
+                              fontSize: cellFs, color: Colors.grey.shade700),
+                        ),
+                      )),
+                      // Description
+                      DataCell(Container(
+                        constraints: const BoxConstraints(maxWidth: 180),
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Text(bill.billdesc ?? '',
+                            style: TextStyle(fontSize: cellFs),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis),
+                      )),
+                      _numCell(indianFormat.format(bill.billamnt ?? 0),
+                          bold: true),
+                      _numCell(indianFormat.format(bill.gstamnt ?? 0)),
+                      _numCell(indianFormat.format(bill.billtotamnt ?? 0),
+                          color: Colors.blueGrey.shade700, bold: true),
+                      _numCell(indianFormat.format(bill.itamnt ?? 0)),
+                      _numCell(indianFormat.format(bill.retnamnt ?? 0)),
+                      _numCell(indianFormat.format(bill.dedamnt ?? 0)),
+                      _numCell(indianFormat.format(totalDeduction),
+                          color: Colors.red.shade600, bold: true),
+                      _numCell(indianFormat.format(netReceivable), bold: true),
+                      _numCell(indianFormat.format(bill.recamnt ?? 0),
+                          color: Colors.green.shade700, bold: true),
+                      // Receipt date
+                      DataCell(Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Text(
+                          bill.recdate != null
+                              ? _formatDate(bill.recdate, includeTime: false)
+                              : '—',
+                          style: TextStyle(
+                              fontSize: cellFs, color: Colors.grey.shade700),
+                        ),
+                      )),
+                      // Outstanding
+                      DataCell(Container(
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 6, horizontal: 6),
+                        decoration: outstanding > 0
+                            ? BoxDecoration(
+                                color: Colors.deepOrange.shade50,
+                                borderRadius: BorderRadius.circular(6),
+                              )
+                            : null,
+                        child: Text(
+                          indianFormat.format(outstanding),
+                          style: TextStyle(
+                            fontSize: cellFs,
+                            fontWeight: FontWeight.w700,
+                            color: outstanding > 0
+                                ? Colors.deepOrange.shade700
+                                : Colors.green.shade700,
+                          ),
+                          textAlign: TextAlign.right,
+                        ),
+                      )),
+                    ],
+                  );
+                }),
+
+                // ── Totals row ──
+                DataRow(
+                  color: WidgetStateProperty.all(Colors.indigo.shade50),
+                  cells: [
+                    _emptyCell(),
+                    _emptyCell(),
+                    // TOTAL label
+                    DataCell(Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: Colors.indigo.shade100,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Icon(Icons.functions_rounded,
+                                size: 16, color: Colors.indigo.shade700),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'TOTAL',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              color: Colors.indigo.shade800,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )),
+                    // Amount (Sum of all bill amounts)
+                    _totalNumCell(indianFormat.format(totalBillAmount)),
+                    // GST (Sum of all GST)
+                    _totalNumCell(indianFormat.format(totalGST)),
+                    // ✅ Total Value (Amount + GST) - FIXED
+                    _totalNumCell(indianFormat.format(totalBilled),
+                        color: Colors.blue.shade800),
+                    // IT
+                    _totalNumCell(indianFormat.format(totalIT)),
+                    // Retention
+                    _totalNumCell(indianFormat.format(totalRetn)),
+                    // Other Deduction
+                    _totalNumCell(indianFormat.format(totalDed)),
+                    // Total Deduction
+                    _totalNumCell(indianFormat.format(totalAllDeductions),
+                        color: Colors.red.shade700),
+                    // ✅ Net Receivable (Total Billed - Total Deductions) - FIXED
+                    _totalNumCell(indianFormat.format(totalNetReceivable)),
+                    // Received
+                    _totalNumCell(indianFormat.format(item.recamnt ?? 0),
+                        color: Colors.green.shade800),
+                    // Empty (Date column)
+                    _emptyCell(),
+                    // Outstanding
                     _totalNumCell(indianFormat.format(item.balanceAmnt ?? 0),
                         color: (item.balanceAmnt ?? 0) > 0
                             ? Colors.deepOrange.shade700

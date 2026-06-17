@@ -558,7 +558,7 @@ class _StageUpdateScreenState extends State<StageUpdateScreen> {
     }
   }
 
-  Widget _buildStageTable() {
+  /*Widget buildStageTable() {
     for (int i = 0; i < stageList.length; i++) {
       print(
           "  Stage ${i + 1}: ID=${stageList[i].stageid}, Name=${stageList[i].stagename}");
@@ -657,7 +657,7 @@ class _StageUpdateScreenState extends State<StageUpdateScreen> {
         },
       ),
     );
-  }
+  }*/
 
   Widget _buildStageInputSection() {
     final isViewOnly = widget.isReadOnly == true;
@@ -954,419 +954,249 @@ class _StageUpdateScreenState extends State<StageUpdateScreen> {
       return [];
     }
   }
-}
-/*Widget buildStageInputSection() {
-    print("========== _buildStageInputSection RENDERED ==========");
-    print("Current selectedstageId: $selectedstageId");
-    print("Current stageController text: ${stageController.text}");
-    print("Current stageList length: ${stageList.length}");
-    print("Available stages count: ${availableStagesList.length}");
-    print("====================================================");
 
-    final isViewOnly = widget.isReadOnly == true;
+  Widget _buildStageTable() {
+    for (int i = 0; i < stageList.length; i++) {
+      print(
+          "  Stage ${i + 1}: ID=${stageList[i].stageid}, Name=${stageList[i].stagename}");
+    }
+
+    if (stageList.isEmpty && _hasAttemptedSubmit) {
+      return _buildEmptyStagesState();
+    }
+
+    if (stageList.isEmpty) {
+      return const SizedBox.shrink();
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: FutureBuilder<List<String>>(
-                future:
-                    (selectedCustomerId != null && selectedProjectId != null)
-                        ? getAvailableStagesFromDatabase(
-                            selectedCustomerId!, selectedProjectId!)
-                        : Future.value([]),
-                builder: (context, snapshot) {
-                  // Show loading indicator while fetching
-                  if (snapshot.connectionState == ConnectionState.waiting &&
-                      selectedCustomerId != null &&
-                      selectedProjectId != null) {
-                    return DropdownButtonFormField<int>(
-                      decoration: _inputDecoration("Select Stage"),
-                      hint: const Text('Loading stages...'),
-                      items: [],
-                      onChanged: null,
-                    );
-                  }
-
-                  // Get available stages from snapshot or use cached list
-                  List<String> displayStages = snapshot.data ?? [];
-
-                  // Also filter out stages that are already added in current session
-                  final addedStageIds = stageList
-                      .map((s) => getFullStageName(s.stageid ?? ''))
-                      .toSet();
-
-                  final filteredStages = displayStages
-                      .where((stage) => !addedStageIds.contains(stage))
-                      .toList();
-
-                  return DropdownButtonFormField<int>(
-                    value: selectedstageId,
-                    decoration: _inputDecoration("Select Stage").copyWith(
-                      suffixIcon: (!isViewOnly && selectedstageId != null)
-                          ? IconButton(
-                              onPressed: () {
-                                print("Clear Stage ID button pressed");
-                                setState(() {
-                                  selectedstageId = null;
-                                });
-                              },
-                              icon: const Icon(Icons.clear, size: 18),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear selection',
-                            )
-                          : null,
-                    ),
-                    items: filteredStages.asMap().entries.map((entry) {
-                      final index = entry.key + 1;
-                      final stageName = entry.value;
-                      // Extract stage number from "Stage 1" format
-                      final stageNumber =
-                          int.tryParse(stageName.replaceAll('Stage ', '')) ??
-                              index;
-                      return DropdownMenuItem<int>(
-                        value: stageNumber,
-                        child: Text(stageName),
-                      );
-                    }).toList(),
-                    onChanged: (isViewOnly || filteredStages.isEmpty)
-                        ? null
-                        : (value) {
-                            print("Dropdown changed - New value: $value");
-                            setState(() {
-                              selectedstageId = value;
-                            });
-                          },
-                  );
-                },
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: IntrinsicHeight(
-                child: TextFormField(
-                  controller: stageController,
-                  decoration: InputDecoration(
-                    labelText: "Stage Name",
-                    hintText: "Enter custom stage name",
-                    border: const OutlineInputBorder(),
-                    suffixIcon: stageController.text.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear, size: 18),
-                            onPressed: () {
-                              print("Clear Stage Name button pressed");
-                              setState(() {
-                                stageController.clear();
-                              });
-                            },
-                            padding: EdgeInsets.zero,
-                            tooltip: 'Clear',
-                          )
-                        : null,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 14,
-                    ),
-                  ),
-                  maxLines: 1,
-                  keyboardType: TextInputType.text,
-                  readOnly: isViewOnly,
-                  enabled: !isViewOnly,
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 4, 4, 10),
+          child: Row(
+            children: [
+              Icon(Icons.layers_outlined, size: 18, color: AppColors.primary),
+              const SizedBox(width: 6),
+              Text(
+                'Stages added (${stageList.length})',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[600],
+                  letterSpacing: 0.2,
                 ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        if (!isViewOnly)
-          Align(
-            alignment: Alignment.centerRight,
-            child: ElevatedButton.icon(
-              onPressed: _addStage,
-              icon: const Icon(Icons.add),
-              label: const Text("Add Stage"),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
-              ),
-            ),
+            ],
           ),
+        ),
+        ListView.separated(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: stageList.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 10),
+          itemBuilder: (context, index) => _buildStageCard(index),
+        ),
       ],
     );
   }
 
-@override
-Widget _build(BuildContext context) {
-  final isEditing = widget.stagelistData != null && !widget.isReadOnly!;
-  final isViewOnly = widget.isReadOnly == true;
-  return Scaffold(
-    appBar: AppBar(
-      title: const Text('Stage Update'),
-    ),
-    body: LayoutBuilder(
-      builder: (context, constraints) {
-        final minWidth =
-        constraints.maxWidth < 600 ? 600.0 : constraints.maxWidth;
+  Widget _buildStageCard(int index) {
+    final item = stageList[index];
+    final String stageDisplayName = getFullStageName(item.stageid ?? '');
+    final double percent =
+        double.tryParse(item.stagepercentage?.toString() ?? '') ?? 0;
+    final Color percentColor = _percentColor(percent);
 
-        return SingleChildScrollView(
-          controller: _scrollController,
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            physics: const ClampingScrollPhysics(),
-            child: Container(
-              width: minWidth,
-              padding:
-              const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 12, 4, 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey.withOpacity(0.15)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 44,
+            height: 44,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                SizedBox(
+                  width: 44,
+                  height: 44,
+                  child: CircularProgressIndicator(
+                    value: percent.clamp(0, 100) / 100,
+                    strokeWidth: 4,
+                    backgroundColor: percentColor.withOpacity(0.15),
+                    valueColor: AlwaysStoppedAnimation<Color>(percentColor),
+                  ),
+                ),
+                Text(
+                  '${percent.toStringAsFixed(0)}%',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: percentColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.stagename ?? '',
+                  style: const TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 3),
+                Row(
                   children: [
-                    ///Customer Name & Project Name
-                    Row(
-                      children: [
-                        Expanded(
-                          child: isViewOnly
-                              ? TextFormField(
-                            controller: customerController,
-                            decoration:
-                            _inputDecoration("Customer Name"),
-                            readOnly: true,
-                            enabled: false,
-                          )
-                              : Autocomplete<ChecklistCustomer>(
-                            displayStringForOption: (option) =>
-                            "${option.customerId} - ${option.companyName}",
-                            optionsBuilder:
-                                (TextEditingValue textEditingValue) {
-                              if (textEditingValue.text.isEmpty) {
-                                return customerList;
-                              }
-                              return customerList.where((customer) {
-                                return customer.companyName
-                                    .toLowerCase()
-                                    .contains(textEditingValue.text
-                                    .toLowerCase()) ||
-                                    customer.customerId
-                                        .toString()
-                                        .contains(
-                                        textEditingValue.text);
-                              });
-                            },
-                            onSelected: (ChecklistCustomer selection) {
-                              debugPrint(
-                                  'Selected Customer: ${selection.companyName}, ID: ${selection.customerId}');
-
-                              customerController.text =
-                              "${selection.customerId} - ${selection.companyName}";
-
-                              setState(() {
-                                selectedCustomerId =
-                                    selection.customerId;
-                                selectedProjectId = null;
-                                siteController.clear();
-                              });
-
-                              loadProjects(selection
-                                  .customerId); // Pass the parsed customer ID
-                            },
-                            fieldViewBuilder: (
-                                context,
-                                controller,
-                                focusNode,
-                                onFieldSubmitted,
-                                ) {
-                              controller.text = customerController.text;
-                              return TextFormField(
-                                controller: controller,
-                                focusNode: focusNode,
-                                decoration: InputDecoration(
-                                  labelText: "Customer Name",
-                                  hintText: "Search Customer",
-                                  border: const OutlineInputBorder(),
-                                  suffixIcon: controller.text.isNotEmpty
-                                      ? IconButton(
-                                    icon: const Icon(Icons.clear),
-                                    onPressed: () {
-                                      controller.clear();
-                                      customerController.clear();
-                                      setState(() {
-                                        selectedCustomerId = null;
-                                        selectedProjectId = null;
-                                        siteController.clear();
-                                      });
-                                    },
-                                  )
-                                      : null,
-                                ),
-                                autovalidateMode:
-                                AutovalidateMode.onUserInteraction,
-                              );
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: isViewOnly
-                              ? TextFormField(
-                            controller: siteController,
-                            decoration: _inputDecoration("Site Name"),
-                            readOnly: true,
-                            enabled: false,
-                          )
-                              : Autocomplete<Project>(
-                            displayStringForOption: (option) =>
-                            "${option.projectId} - ${option.projectName}",
-                            optionsBuilder:
-                                (TextEditingValue textEditingValue) {
-                              if (textEditingValue.text.isEmpty) {
-                                return projectList;
-                              }
-                              return projectList.where((project) {
-                                return project.projectName
-                                    .toLowerCase()
-                                    .contains(
-                                  textEditingValue.text
-                                      .toLowerCase(),
-                                ) ||
-                                    project.projectId
-                                        .toString()
-                                        .contains(
-                                        textEditingValue.text);
-                              });
-                            },
-                            onSelected: (Project selection) {
-                              siteController.text =
-                              "${selection.projectId} - ${selection.projectName}";
-                              setState(() {
-                                selectedProjectId = selection.projectId;
-                              });
-                            },
-                            fieldViewBuilder: (
-                                context,
-                                controller,
-                                focusNode,
-                                onFieldSubmitted,
-                                ) {
-                              controller.text = siteController.text;
-                              return TextFormField(
-                                controller: controller,
-                                focusNode: focusNode,
-                                decoration: InputDecoration(
-                                  labelText: "Site Name",
-                                  hintText: "Search Site",
-                                  border: const OutlineInputBorder(),
-                                  suffixIcon: controller.text.isNotEmpty
-                                      ? IconButton(
-                                    icon: const Icon(Icons.clear),
-                                    onPressed: () {
-                                      controller.clear();
-                                      siteController.clear();
-                                      setState(() {
-                                        selectedProjectId = null;
-                                      });
-                                    },
-                                  )
-                                      : null,
-                                ),
-                                autovalidateMode:
-                                AutovalidateMode.onUserInteraction,
-                              );
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-
-                    _buildStageInputSection(),
-
-                    // 🔹 TABLE VIEW
-                    Platform.isAndroid
-                        ? SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: _buildStageTable(),
-                    )
-                        : _buildStageTable(),
-                    const SizedBox(height: 16),
-
-                    ///Submit & Update Button
-                    if (!isViewOnly) ...[
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Expanded(
-                            child: Container(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: [
-                                    AppColors.primary,
-                                    AppColors.primaryDark
-                                  ],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                ),
-                                borderRadius: BorderRadius.circular(10),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black26,
-                                    blurRadius: 5,
-                                    offset: const Offset(2, 4),
-                                  ),
-                                ],
-                              ),
-                              child: InkWell(
-                                onTap: isSubmitting
-                                    ? null
-                                    : () async {
-                                  if (_formKey.currentState!
-                                      .validate()) {
-                                    await insertSalesStagelist();
-                                  }
-                                },
-                                borderRadius: BorderRadius.circular(10),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                      vertical: 15),
-                                  child: Center(
-                                    child: isSubmitting
-                                        ? const SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        valueColor:
-                                        AlwaysStoppedAnimation<
-                                            Color>(Colors.white),
-                                      ),
-                                    )
-                                        : Text(
-                                      isEditing ? 'Update' : 'Submit',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
+                    Icon(Icons.tag, size: 12, color: Colors.grey[500]),
+                    const SizedBox(width: 3),
+                    Expanded(
+                      child: Text(
+                        stageDisplayName,
+                        style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                    ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          PopupMenuButton<String>(
+            icon: Icon(Icons.more_vert, color: Colors.grey[600]),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            onSelected: (value) {
+              if (value == 'edit') {
+                _editStage(index);
+              } else if (value == 'delete') {
+                _deleteStage(index);
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'edit',
+                child: Row(
+                  children: [
+                    Icon(Icons.edit_outlined, size: 18, color: Colors.blue),
+                    SizedBox(width: 10),
+                    Text('Edit'),
                   ],
                 ),
               ),
+              const PopupMenuItem(
+                value: 'delete',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete_outline, size: 18, color: Colors.red),
+                    SizedBox(width: 10),
+                    Text('Delete'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _percentColor(double percent) {
+    if (percent >= 75) return Colors.green;
+    if (percent >= 40) return Colors.blue;
+    if (percent > 0) return Colors.orange;
+    return Colors.grey;
+  }
+
+  void _editStage(int index) {
+    final item = stageList[index];
+    setState(() {
+      selectedstageId = int.tryParse(item.stageid ?? '0');
+      stageController.text = item.stagename ?? '';
+      percentageController.text =
+          item.stagepercentage?.toString() ?? ''; // ✅ Fixed
+      stageList.removeAt(index);
+      _hasAttemptedSubmit = false;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("Editing Stage ${item.stageid} - ${item.stagename}"),
+        backgroundColor: Colors.orange,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _deleteStage(int index) {
+    final item = stageList[index];
+    setState(() {
+      stageList.removeAt(index);
+      if (stageList.isEmpty) {
+        _hasAttemptedSubmit = false;
+      }
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("Deleted Stage ${item.stageid} - ${item.stagename}"),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 1),
+      ),
+    );
+  }
+
+  Widget _buildEmptyStagesState() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 28),
+      decoration: BoxDecoration(
+        color: Colors.grey.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey.withOpacity(0.15)),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.layers_clear_outlined, size: 32, color: Colors.grey[400]),
+          const SizedBox(height: 10),
+          Text(
+            'No stages added',
+            style: TextStyle(
+              color: Colors.grey[600],
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
             ),
           ),
-        );
-      },
-    ),
-  );
-}*/
+          const SizedBox(height: 4),
+          Text(
+            'Add a stage above to start tracking progress',
+            style: TextStyle(color: Colors.grey[400], fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+}

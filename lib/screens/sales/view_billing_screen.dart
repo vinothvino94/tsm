@@ -293,9 +293,11 @@ class _ViewBillingScreenState extends State<ViewBillingScreen> {
                         )
                       : ListView.builder(
                           padding: const EdgeInsets.all(16),
-                          itemCount: _billingList.length,
+                          itemCount: _filteredBillingList
+                              .length, // ✅ Use filtered list
                           itemBuilder: (context, index) {
-                            return _buildBillingCard(_billingList[index]);
+                            return _buildBillingCard(_filteredBillingList[
+                                index]); // ✅ Use filtered list
                           },
                         ),
                 ),
@@ -313,6 +315,17 @@ class _ViewBillingScreenState extends State<ViewBillingScreen> {
         ),
       ),
     );
+  }
+
+  List<SalesBillingModel> get _filteredBillingList {
+    if (_searchQuery.isEmpty) {
+      return _billingList;
+    }
+    return _billingList.where((bill) {
+      final searchLower = _searchQuery.toLowerCase();
+      return (bill.billno?.toLowerCase().contains(searchLower) ?? false) ||
+          (bill.billdesc?.toLowerCase().contains(searchLower) ?? false);
+    }).toList();
   }
 
   void _onGeneratePressed() {

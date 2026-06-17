@@ -952,34 +952,6 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  /*Expanded(
-                    child: TextFormField(
-                      controller: whrlController,
-                      decoration: InputDecoration(
-                        labelText: "With held release",
-                        hintText: "With held release",
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
-                        suffixIcon:
-                            whrlController.text.isNotEmpty && !isViewOnly
-                                ? IconButton(
-                                    icon: const Icon(Icons.clear, size: 18),
-                                    onPressed: () {
-                                      setState(() {
-                                        whrlController.clear();
-                                      });
-                                    },
-                                    padding: EdgeInsets.zero,
-                                    tooltip: 'Clear value',
-                                  )
-                                : null,
-                      ),
-                      readOnly: isViewOnly,
-                      enabled: !isViewOnly,
-                    ),
-                  ),
-                  const SizedBox(width: 16),*/
                   Expanded(
                     child: TextFormField(
                       controller: totdedController,
@@ -1343,60 +1315,6 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
     setState(() {});
   }
 
-  Future<void> loadStagesFromApi(int customerId, int projectId) async {
-    setState(() {
-      isLoadingStages = true;
-      dynamicStages = {};
-      selectedstageId = null;
-      stageController.clear();
-    });
-
-    try {
-      final response = await http.post(
-        ApiUtils.getUri('StageViewList'),
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: jsonEncode({
-          "CUSID": customerId,
-          "PROJID": projectId,
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-
-        if (data['Success'] == true) {
-          final List tickets = data['Tickets'] ?? [];
-
-          final filteredStages = tickets
-              .map((ticket) => SalesStagelistModel.fromJson(ticket))
-              .where((stage) {
-            bool matches = stage.cusid == customerId &&
-                stage.projid == projectId &&
-                stage.deleted == "N";
-            return matches;
-          }).toList();
-
-          setState(() {
-            stageList = filteredStages;
-            for (var stage in stageList) {
-              if (stage.stageid != null && stage.stagename != null) {
-                dynamicStages[stage.stageid!] = stage.stagename!;
-              }
-            }
-          });
-        }
-      }
-    } catch (e) {
-      print("Exception: $e");
-    } finally {
-      setState(() {
-        isLoadingStages = false;
-      });
-    }
-  }
-
   Future<void> _submitForm() async {
     try {
       final isEditing = widget.billingData != null;
@@ -1744,9 +1662,6 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
         },
         body: jsonEncode(requestBody),
       );
-
-      print('Response status: ${response.statusCode}');
-      print('Response body: ${response.body}');
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
@@ -2320,6 +2235,59 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
         'Success': false,
         'Message': e.toString(),
       };
+    }
+  }
+
+  Future<void> loadStagesFromApi(int customerId, int projectId) async {
+    setState(() {
+      isLoadingStages = true;
+      dynamicStages = {};
+      selectedstageId = null;
+      stageController.clear();
+    });
+
+    try {
+      final uri = ApiUtils.getUri('GetBillingStages').replace(
+        queryParameters: {
+          'cusId': customerId.toString(),
+          'projId': projectId.toString(),
+        },
+      );
+
+      final response = await http.post(
+        uri,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        if (data['Success'] == true) {
+          final List stages = data['Data'] ?? [];
+
+          final loadedStages =
+              stages.map((s) => SalesStagelistModel.fromJson(s)).toList();
+
+          setState(() {
+            stageList = loadedStages;
+            for (var stage in stageList) {
+              if (stage.stageid != null && stage.stagename != null) {
+                dynamicStages[stage.stageid!] = stage.stagename!;
+              }
+            }
+          });
+        } else {
+          debugPrint('GetBillingStages failed: ${data['Message']}');
+        }
+      }
+    } catch (e) {
+      print("Exception: $e");
+    } finally {
+      setState(() {
+        isLoadingStages = false;
+      });
     }
   }
 }

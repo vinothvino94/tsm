@@ -1,3 +1,4 @@
+/*
 buildscript {
     ext.kotlin_version = '1.9.24'
     repositories {
@@ -31,6 +32,58 @@ allprojects {
                     namespace = "com.example.${project.name}"
                 }
                 compileSdk 34
+                ndkVersion "25.1.8937393"
+            }
+        }
+    }
+}
+
+rootProject.buildDir = '../build'
+subprojects {
+    project.buildDir = "${rootProject.buildDir}/${project.name}"
+}
+subprojects {
+    project.evaluationDependsOn(':app')
+}
+
+tasks.register("clean", Delete) {
+    delete rootProject.buildDir
+}*/
+
+buildscript {
+    ext.kotlin_version = '2.0.20'  // ✅ Updated from 1.9.24 to 2.0.20
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.7.2'  // ✅ Updated from 8.2.2 to 8.7.2
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+        classpath 'com.google.gms:google-services:4.4.2'  // ✅ Added for Firebase
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    // Universal namespace fix for all plugins
+    subprojects {
+        project.plugins.withId('com.android.library') {
+            android {
+                // Set namespace for known plugins
+                if (project.name == 'flutter_keyboard_visibility') {
+                    namespace "com.jrai.flutter_keyboard_visibility"
+                } else if (project.name == 'record') {
+                    namespace "com.llfbandit.record"
+                }
+                // Default namespace for other plugins
+                else {
+                    namespace = "com.example.${project.name}"
+                }
+                compileSdk 35  // ✅ Updated from 34 to 35
                 ndkVersion "25.1.8937393"
             }
         }

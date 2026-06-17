@@ -250,8 +250,8 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
                 child: TextField(
                   controller: _searchController,
                   decoration:
-                      _inputDecoration('Search by Bill No / SBNO...').copyWith(
-                    hintText: 'Search by Bill No / SBNO...',
+                      _inputDecoration('Search by Entry No / SBNO...').copyWith(
+                    hintText: 'Search by Entry No / SBNO...',
                     prefixIcon: const Icon(Icons.search),
                     suffixIcon: _searchQuery.isNotEmpty
                         ? IconButton(
@@ -290,9 +290,11 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
                         )
                       : ListView.builder(
                           padding: const EdgeInsets.all(16),
-                          itemCount: _desingingList.length,
+                          itemCount: _filteredDesigningList
+                              .length, // ✅ Use filtered list
                           itemBuilder: (context, index) {
-                            return _buildDesingningCard(_desingingList[index]);
+                            return _buildDesingningCard(_filteredDesigningList[
+                                index]); // ✅ Use filtered list
                           },
                         ),
                 ),
@@ -310,6 +312,25 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
         ),
       ),
     );
+  }
+
+  List<SalesDesignModel> get _filteredDesigningList {
+    if (_searchQuery.isEmpty) {
+      return _desingingList;
+    }
+    return _desingingList.where((design) {
+      final searchLower = _searchQuery.toLowerCase();
+      return (design.sdno?.toString().contains(_searchQuery) ?? false) ||
+          (design.selename?.toLowerCase().contains(searchLower) ?? false) ||
+          (design.seleunit?.toLowerCase().contains(searchLower) ?? false) ||
+          (design.seletot?.toString().contains(_searchQuery) ?? false) ||
+          (design.selesno?.toString().contains(_searchQuery) ?? false) ||
+          (design.deleqnty?.toLowerCase().contains(searchLower) ?? false) ||
+          (design.deletot?.toString().contains(_searchQuery) ?? false) ||
+          (design.deleremks?.toLowerCase().contains(searchLower) ?? false) ||
+          (design.sfname?.toLowerCase().contains(searchLower) ?? false) ||
+          (design.dfname?.toLowerCase().contains(searchLower) ?? false);
+    }).toList();
   }
 
   Future<void> _loadUserDetails() async {
