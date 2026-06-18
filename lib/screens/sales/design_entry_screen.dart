@@ -1195,13 +1195,12 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
   }
 
   Future<void> _previewExistingFile(String fileName) async {
-    final extension = fileName.split('.').last.toLowerCase();
-
-    // Show a message since we don't have the file bytes locally
+    // Show snackbar asking user to download first
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('File stored on server: $fileName'),
-        backgroundColor: Colors.blue,
+      const SnackBar(
+        content: Text('Download the attachment first to view it.'),
+        backgroundColor: Colors.orange,
+        duration: Duration(seconds: 3),
       ),
     );
   }
