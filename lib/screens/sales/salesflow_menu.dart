@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:tsm/screens/sales/projectcontrol_entry_screen.dart';
 
 import '../../widgets/common_menu_screen.dart';
 import 'billing_entry_screen.dart';
@@ -80,6 +81,15 @@ class _SalesflowMenuState extends State<SalesflowMenu> {
         );
         break;
 
+      case 'Project Control':
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) =>
+                ProjectcontrolEntryScreen(isSuperAdmin: widget.isSuperAdmin),
+          ),
+        );
+        break;
       case 'Over All Summary':
         Navigator.push(
           context,

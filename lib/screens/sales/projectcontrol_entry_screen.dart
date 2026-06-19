@@ -1,41 +1,45 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:io' as io;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_pdfview/flutter_pdfview.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
-import 'package:tsm/screens/sales/view_design_screen.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:tsm/screens/sales/view_projeectcontrol_screen.dart';
 import '../../api/api_utils.dart';
 import '../../colors/app_colors.dart';
 import '../../models/project.dart';
 import '../../services/prefrence_helper.dart';
 import '../../widgets/crop_screen.dart';
+import 'dart:typed_data';
+
+import 'dart:io' as io;
+import 'package:flutter/services.dart';
+import 'package:flutter_pdfview/flutter_pdfview.dart';
+
+import 'package:url_launcher/url_launcher.dart';
 import 'package:universal_html/html.dart' as html;
 import 'package:path/path.dart' as path;
 
-class DesignEntryScreen extends StatefulWidget {
+class ProjectcontrolEntryScreen extends StatefulWidget {
   final bool isSuperAdmin;
   final bool? isReadOnly;
-  final SalesDesignModel? designData;
+  final ProjectcontrolModel? pcData;
   final VoidCallback? onDataSaved;
-  const DesignEntryScreen({
+  const ProjectcontrolEntryScreen({
     super.key,
     this.isSuperAdmin = false,
     this.isReadOnly = false,
-    this.designData,
+    this.pcData,
     this.onDataSaved,
   });
 
   @override
-  State<DesignEntryScreen> createState() => _DesignEntryScreenState();
+  State<ProjectcontrolEntryScreen> createState() =>
+      _ProjectcontrolEntryScreenState();
 }
 
-class _DesignEntryScreenState extends State<DesignEntryScreen> {
+class _ProjectcontrolEntryScreenState extends State<ProjectcontrolEntryScreen> {
   final _scrollController = ScrollController();
   final _formKey = GlobalKey<FormState>();
   TextEditingController customerController = TextEditingController();
@@ -60,9 +64,8 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
   bool isLoadingStages = false;
   DateTime? invDate, recDate;
 
-  List<SalesEntryModel> _salesEntries = [];
+  List<PCEntryModel> _salesEntries = [];
   bool _hasAttemptedSubmit = false;
-  List<ElementMasterModel> elementMasterList = [];
   int? selectedEleCode;
   String? selectedEleName;
 
@@ -80,8 +83,8 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
     super.initState();
     loadCustomers();
     _loadUserDetails();
-    _loadElementMaster();
-    if (widget.designData != null) {
+
+    if (widget.pcData != null) {
       _populateFormData();
     }
   }
@@ -107,16 +110,16 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Design Update'),
+        title: const Text('Project Control Update'),
         actions: [
           IconButton(
             icon: const Icon(Icons.list_alt),
-            tooltip: 'View Design Entry List',
+            tooltip: 'View Project Control List',
             onPressed: () {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => ViewDesignScreen(
+                  builder: (context) => ViewProjectControlScreen(
                     isSuperAdmin: widget.isSuperAdmin,
                   ),
                 ),
@@ -305,7 +308,7 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  ///Ele Name - Dropdown
+                  ///Ele Name - TextFormField
                   Expanded(
                     child: isViewOnly
                         ? TextFormField(
@@ -314,93 +317,22 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
                             readOnly: true,
                             enabled: false,
                           )
-                        : DropdownButtonFormField<ElementMasterModel?>(
-                            isExpanded: true,
+                        : TextFormField(
+                            controller: elenameController,
                             decoration: InputDecoration(
-                              hintText: "Select Element",
+                              labelText: "Name of Element",
+                              hintText: "Enter Element Name",
                               border: const OutlineInputBorder(),
                               contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 8),
-                              suffixIcon: selectedEleCode != null
+                                  horizontal: 16, vertical: 14),
+                              suffixIcon: elenameController.text.isNotEmpty
                                   ? IconButton(
                                       icon: const Icon(Icons.clear, size: 18),
                                       onPressed: () {
                                         setState(() {
+                                          elenameController.clear();
                                           selectedEleCode = null;
                                           selectedEleName = null;
-                                          elenameController.clear();
-                                          eleunitController.clear();
-                                          eletotalController.clear();
-                                        });
-                                      },
-                                      padding: EdgeInsets.zero,
-                                      tooltip: 'Clear selection',
-                                    )
-                                  : null,
-                            ),
-                            value: selectedEleCode != null &&
-                                    elementMasterList.isNotEmpty
-                                ? elementMasterList.firstWhere(
-                                    (e) => e.eleCode == selectedEleCode,
-                                    orElse: () => elementMasterList.first,
-                                  )
-                                : null,
-                            items: elementMasterList.map((element) {
-                              return DropdownMenuItem<ElementMasterModel>(
-                                value: element,
-                                child: Text(
-                                  element.eleName ?? '',
-                                  style: const TextStyle(fontSize: 14),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              );
-                            }).toList(),
-                            onChanged: (ElementMasterModel? selected) {
-                              if (selected != null) {
-                                setState(() {
-                                  selectedEleCode = selected.eleCode;
-                                  selectedEleName = selected.eleName;
-                                  elenameController.text =
-                                      selected.eleName ?? '';
-                                  eleunitController.text =
-                                      selected.eleUnit ?? '';
-                                });
-                              } else {
-                                setState(() {
-                                  selectedEleCode = null;
-                                  selectedEleName = null;
-                                  elenameController.clear();
-                                  eleunitController.clear();
-                                  eletotalController.clear();
-                                });
-                              }
-                            },
-                          ),
-                  ),
-                  const SizedBox(width: 16),
-
-                  ///Ele Unit - Dropdown (Auto-filled from Element Name)
-                  Expanded(
-                    child: isViewOnly
-                        ? TextFormField(
-                            controller: eleunitController,
-                            decoration: _inputDecoration("Element Unit"),
-                            readOnly: true,
-                            enabled: false,
-                          )
-                        : DropdownButtonFormField<String?>(
-                            isExpanded: true,
-                            decoration: InputDecoration(
-                              hintText: "Select Unit",
-                              border: const OutlineInputBorder(),
-                              contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 8),
-                              suffixIcon: eleunitController.text.isNotEmpty
-                                  ? IconButton(
-                                      icon: const Icon(Icons.clear, size: 18),
-                                      onPressed: () {
-                                        setState(() {
-                                          eleunitController.clear();
                                         });
                                       },
                                       padding: EdgeInsets.zero,
@@ -408,30 +340,16 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
                                     )
                                   : null,
                             ),
-                            value: eleunitController.text.isNotEmpty
-                                ? eleunitController.text
-                                : null,
-                            items: elementMasterList
-                                .map((element) => element.eleUnit)
-                                .where(
-                                    (unit) => unit != null && unit.isNotEmpty)
-                                .toSet()
-                                .map((unit) {
-                              return DropdownMenuItem<String>(
-                                value: unit,
-                                child: Text(
-                                  unit!,
-                                  style: const TextStyle(fontSize: 14),
-                                ),
-                              );
-                            }).toList(),
-                            onChanged: (String? selectedUnit) {
-                              if (selectedUnit != null) {
-                                setState(() {
-                                  eleunitController.text = selectedUnit;
-                                });
-                              }
-                            },
+                            readOnly: isViewOnly,
+                            enabled: !isViewOnly,
+                            style: const TextStyle(
+                              fontSize: 14,
+                            ),
+                            inputFormatters: [
+                              UpperCaseTextFormatter(), // ← add this
+                            ],
+                            textCapitalization:
+                                TextCapitalization.characters, // ✅ All caps
                           ),
                   ),
                   const SizedBox(width: 16),
@@ -474,7 +392,7 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
                 alignment: Alignment.centerRight,
                 child: ElevatedButton.icon(
                   onPressed: () {
-                    _addSalesEntry();
+                    _addPCEntry();
                   },
                   icon: const Icon(Icons.add),
                   label: const Text("Add"),
@@ -489,29 +407,29 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
               isAndroid
                   ? SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
-                      child: _buildSalesEntriesTable(),
+                      child: _buildPCEntriesTable(),
                     )
-                  : _buildSalesEntriesTable(),
+                  : _buildPCEntriesTable(),
               const SizedBox(height: 16),
 
-              ///Design Details
+              ///Projectcontrol Details
               Text(
-                'Design Details',
+                'Projectcontrol Details',
                 style: TextStyle(fontSize: 16, color: AppColors.primaryLight),
               ),
               const SizedBox(height: 16),
 
-              ///Design Entries Row
+              ///Project Control Entries Row
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  ///Ele Total (Design Total)
+                  ///Project Control Total
                   Expanded(
                     child: TextFormField(
                       controller: deletotalController,
                       decoration: InputDecoration(
-                        labelText: "Design Total",
-                        hintText: "Design Total",
+                        labelText: "Project Control Total",
+                        hintText: "Project Control Total",
                         border: const OutlineInputBorder(),
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 14),
@@ -535,13 +453,13 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
                   ),
                   const SizedBox(width: 16),
 
-                  ///Ele Remarks
+                  ///Remarks
                   Expanded(
                     child: TextFormField(
                       controller: delermksController,
                       decoration: InputDecoration(
-                        labelText: "Element Remarks",
-                        hintText: "Element Remarks",
+                        labelText: "Remarks",
+                        hintText: "Remarks",
                         border: const OutlineInputBorder(),
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 14),
@@ -609,7 +527,7 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
                 ),
               const SizedBox(height: 16),
 
-              ///Design Document Attachment
+              ///Project Control Document Attachment
               ///Document Text
               if (_existingDesignFiles.isEmpty && _designAttachedFiles.isEmpty)
                 Center(
@@ -622,7 +540,7 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Design Existing Attachments:',
+                    Text('Project Control Existing Attachments:',
                         style: TextStyle(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
                     ..._existingDesignFiles.map(
@@ -636,7 +554,7 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Design New Attachments:',
+                    Text('Project Control New Attachments:',
                         style: TextStyle(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
                     ..._designAttachedFiles.map((file) => _buildAttachmentItem(
@@ -679,7 +597,7 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
                           padding: const EdgeInsets.symmetric(vertical: 15),
                           child: Center(
                             child: Text(
-                              widget.designData != null
+                              widget.pcData != null
                                   ? 'Update'
                                   : 'Submit', // ✅ Change button text
                               style: const TextStyle(
@@ -700,14 +618,6 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
         ),
       ),
     );
-  }
-
-  Future<void> _loadElementMaster() async {
-    final elements = await _fetchElementMaster();
-
-    setState(() {
-      elementMasterList = elements;
-    });
   }
 
   Future<void> _loadUserDetails() async {
@@ -810,8 +720,8 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
                 padding: const EdgeInsets.all(8.0),
                 child: _buildAttachButton(
                   icon: Icons.attach_file,
-                  label: 'Design Files',
-                  onPressed: designpickFiles,
+                  label: 'Project Control Files',
+                  onPressed: pcpickFiles,
                   color: AppColors.primaryLight,
                 ),
               ),
@@ -898,7 +808,7 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
     }
   }
 
-  Future<void> designpickFiles() async {
+  Future<void> pcpickFiles() async {
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       allowMultiple: true,
       allowedExtensions: [
@@ -1207,7 +1117,7 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
 
   Future<void> _submitForm() async {
     try {
-      final isEditing = widget.designData != null;
+      final isEditing = widget.pcData != null;
 
       // Validate required fields
       if (selectedCustomerId == null) {
@@ -1230,22 +1140,11 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
         return;
       }
 
-      if (_salesEntries.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Please add at least one sales entry'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
-      }
-
       // Prepare comma-separated values
       String elementNames = _salesEntries.map((e) => e.elementName).join(',');
-      String elementUnits = _salesEntries.map((e) => e.unit).join(',');
-      String elementTotals = _salesEntries.map((e) => e.totalQty).join(',');
-      String delementTotals = _salesEntries.map((e) => e.designTotal).join(',');
-      String deleremksList = _salesEntries.map((e) => e.dremarks).join(',');
+      String spcelementNames = _salesEntries.map((e) => e.sTotal).join(',');
+      String pcelementTotals = _salesEntries.map((e) => e.pcTotal).join(',');
+      String deleremksList = _salesEntries.map((e) => e.pcremarks).join(',');
 
       int totalEntries = _salesEntries.length;
 
@@ -1274,27 +1173,26 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
       }
 
       // ✅ Build the design model
-      final design = SalesDesignModel(
-        sdno: isEditing ? (widget.designData?.sdno ?? 0) : 0,
-        cusid: selectedCustomerId,
-        projid: selectedProjectId,
-        selename: elementNames,
-        seleunit: elementUnits,
-        seletot: elementTotals,
-        selesno: totalEntries,
-        sfname: widget.designData?.sfname,
-        sftype: widget.designData?.sftype,
-        sfcount: widget.designData?.sfcount,
-        dfname: widget.designData?.dfname,
-        dftype: widget.designData?.dftype,
-        dfcount: widget.designData?.dfcount,
-        deletot: delementTotals,
-        deleremks: deleremksList,
+      final design = ProjectcontrolModel(
+        SPCNO: isEditing ? (widget.pcData?.SPCNO ?? 0) : 0,
+        CUSID: selectedCustomerId,
+        PROJID: selectedProjectId,
+        SPCNAME: elementNames,
+        SPCTOT: spcelementNames,
+        SPCSNO: totalEntries,
+        SFNAME: widget.pcData?.SFNAME,
+        SFTYPE: widget.pcData?.SFTYPE,
+        SFCOUNT: widget.pcData?.SFCOUNT,
+        PCFNAME: widget.pcData?.PCFNAME,
+        PCFTYPE: widget.pcData?.PCFTYPE,
+        PCFCOUNT: widget.pcData?.PCFCOUNT,
+        PCTOT: pcelementTotals,
+        PCREMKS: deleremksList,
         // ✅ Only send ADDUSER on INSERT
-        adduser: isEditing ? null : empCode,
+        ADDUSER: isEditing ? null : empCode,
         // ✅ Only send edituser/editdate on UPDATE (edit)
-        edituser: isEditing ? empCode : null,
-        editdate: isEditing ? DateTime.now() : null,
+        EDITUSER: isEditing ? empCode : null,
+        EDITDATE: isEditing ? DateTime.now() : null,
         // ✅ Send separate removed files
         removedSalesFiles:
             _removedSalesFiles.isNotEmpty ? _removedSalesFiles.join(",") : null,
@@ -1333,8 +1231,8 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(isEditing
-                ? 'Design Entry Updated Successfully'
-                : 'Design Entry Saved Successfully'),
+                ? 'Project Control Entry Updated Successfully'
+                : 'Project Control Entry Saved Successfully'),
             backgroundColor: Colors.green,
           ),
         );
@@ -1374,7 +1272,7 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
   Future<Map<String, dynamic>> saveSalesDesign(
       Map<String, dynamic> requestBody) async {
     try {
-      final uri = ApiUtils.getUri('SaveSalesDesign');
+      final uri = ApiUtils.getUri('SaveProjectControl');
       print('Sending to: $uri');
 
       final response = await http.post(
@@ -1404,11 +1302,11 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
   }
 
   void _populateFormData() async {
-    final data = widget.designData!;
+    final data = widget.pcData!;
 
     // Set selected IDs
-    selectedCustomerId = data.cusid;
-    selectedProjectId = data.projid;
+    selectedCustomerId = data.CUSID;
+    selectedProjectId = data.PROJID;
 
     // Wait for customerList to be populated if needed
     if (customerList.isEmpty) {
@@ -1416,9 +1314,9 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
     }
 
     // Find and display customer name
-    if (data.cusid != null) {
+    if (data.CUSID != null) {
       final customer = customerList.firstWhere(
-        (c) => c.customerId == data.cusid,
+        (c) => c.customerId == data.CUSID,
         orElse: () => ChecklistCustomer(customerId: 0, companyName: ''),
       );
       if (customer.customerId > 0) {
@@ -1426,19 +1324,19 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
             "${customer.customerId} - ${customer.companyName}";
         debugPrint('Customer set: ${customerController.text}');
       } else {
-        await _fetchAndSetCustomerName(data.cusid!);
+        await _fetchAndSetCustomerName(data.CUSID!);
       }
     }
 
     // Load projects for this customer
-    if (data.cusid != null) {
-      await loadProjects(data.cusid!);
+    if (data.CUSID != null) {
+      await loadProjects(data.CUSID!);
     }
 
     // Find and display project name
-    if (data.projid != null && projectList.isNotEmpty) {
+    if (data.PROJID != null && projectList.isNotEmpty) {
       final project = projectList.firstWhere(
-        (p) => p.projectId == data.projid,
+        (p) => p.projectId == data.PROJID,
         orElse: () => Project(projectId: 0, projectName: ''),
       );
       if (project.projectId > 0) {
@@ -1448,35 +1346,31 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
     }
 
     // ✅ Set existing Sales files
-    if (data.sfname != null && data.sfname!.isNotEmpty) {
-      _existingSalesFiles = data.sfname!.split(',');
+    if (data.SFNAME != null && data.SFNAME!.isNotEmpty) {
+      _existingSalesFiles = data.SFNAME!.split(',');
       debugPrint('Existing Sales files: $_existingSalesFiles');
     } else {
       _existingSalesFiles = [];
     }
 
     // ✅ Set existing Design files
-    if (data.dfname != null && data.dfname!.isNotEmpty) {
-      _existingDesignFiles = data.dfname!.split(',');
+    if (data.PCFNAME != null && data.PCFNAME!.isNotEmpty) {
+      _existingDesignFiles = data.PCFNAME!.split(',');
       debugPrint('Existing Design files: $_existingDesignFiles');
     } else {
       _existingDesignFiles = [];
     }
 
     // ✅ Parse comma-separated values
-    final elementNames = data.selename
+    final elementNames = data.SPCNAME
             ?.split(',')
             .map((s) => s.trim())
             .where((s) => s.isNotEmpty)
             .toList() ??
         [];
-    final elementUnits = data.seleunit
-            ?.split(',')
-            .map((s) => s.trim())
-            .where((s) => s.isNotEmpty)
-            .toList() ??
-        [];
-    final elementTotals = data.seletot
+
+    [];
+    final elementTotals = data.SPCTOT
             ?.split(',')
             .map((s) => s.trim())
             .where((s) => s.isNotEmpty)
@@ -1484,8 +1378,8 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
         [];
 
     // ✅ Parse DELETOT correctly (Design Totals)
-    final designTotals = data.deletot != null && data.deletot!.isNotEmpty
-        ? data.deletot!
+    final designTotals = data.PCTOT != null && data.PCTOT!.isNotEmpty
+        ? data.PCTOT!
             .split(',')
             .map((s) => s.trim())
             .where((s) => s.isNotEmpty)
@@ -1493,8 +1387,8 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
         : [];
 
     // ✅ Parse DELEREMKS correctly (Remarks)
-    final remarks = data.deleremks != null && data.deleremks!.isNotEmpty
-        ? data.deleremks!
+    final remarks = data.PCREMKS != null && data.PCREMKS!.isNotEmpty
+        ? data.PCREMKS!
             .split(',')
             .map((s) => s.trim())
             .where((s) => s.isNotEmpty)
@@ -1509,7 +1403,7 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
 
     for (int i = 0; i < maxLength; i++) {
       String name = i < elementNames.length ? elementNames[i] : '';
-      String unit = i < elementUnits.length ? elementUnits[i] : '';
+
       String total = i < elementTotals.length ? elementTotals[i] : '';
 
       // ✅ IMPORTANT: Get designTotal from designTotals list, not from elementTotals
@@ -1519,14 +1413,13 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
       // Only add if there's at least a name
       if (name.isNotEmpty) {
         _salesEntries.add(
-          SalesEntryModel(
+          PCEntryModel(
             elementName: name,
-            unit: unit,
-            totalQty: total,
-            designTotal: designTotal, // ✅ This comes from DELETOT
-            dremarks: dremarks, // ✅ This comes from DELEREMKS
-            sfname: data.sfname,
-            sftype: data.sftype,
+            sTotal: total,
+            pcTotal: designTotal,
+            pcremarks: dremarks,
+            sfname: data.SFNAME,
+            sftype: data.SFTYPE,
           ),
         );
       }
@@ -1536,22 +1429,9 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
     if (_salesEntries.isNotEmpty) {
       final firstEntry = _salesEntries.first;
       elenameController.text = firstEntry.elementName;
-      eleunitController.text = firstEntry.unit;
-      eletotalController.text = firstEntry.totalQty;
-      deletotalController.text = firstEntry.designTotal; // ✅ Set Design Total
-      delermksController.text = firstEntry.dremarks; // ✅ Set Remarks
 
-      // Try to find matching element
-      if (elementMasterList.isNotEmpty) {
-        final matchingElement = elementMasterList.firstWhere(
-          (e) => e.eleName == firstEntry.elementName,
-          orElse: () => elementMasterList.first,
-        );
-        if (matchingElement.eleName == firstEntry.elementName) {
-          selectedEleCode = matchingElement.eleCode;
-          selectedEleName = matchingElement.eleName;
-        }
-      }
+      deletotalController.text = firstEntry.pcTotal; // ✅ Set Design Total
+      delermksController.text = firstEntry.pcremarks; // ✅ Set Remarks
     }
 
     setState(() {});
@@ -1592,7 +1472,7 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
     }
   }
 
-  Widget _buildSalesEntriesTable() {
+  Widget _buildPCEntriesTable() {
     if (_salesEntries.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -1605,9 +1485,9 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
     double totalDesign = 0;
 
     for (var entry in _salesEntries) {
-      totalSales += double.tryParse(entry.totalQty.replaceAll(',', '')) ?? 0;
-      totalDesign +=
-          double.tryParse(entry.designTotal.replaceAll(',', '')) ?? 0;
+      totalSales +=
+          double.tryParse(entry.sTotal?.replaceAll(',', '') ?? '0') ?? 0;
+      totalDesign += double.tryParse(entry.pcTotal.replaceAll(',', '')) ?? 0;
     }
 
     return Card(
@@ -1648,13 +1528,6 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
                         color: const Color(0xFF1E293B))),
               ),
               DataColumn(
-                label: Text('Unit',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: headerFs,
-                        color: const Color(0xFF1E293B))),
-              ),
-              DataColumn(
                 label: Text('Sales Qnty',
                     style: TextStyle(
                         fontWeight: FontWeight.w700,
@@ -1663,7 +1536,7 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
                 numeric: true,
               ),
               DataColumn(
-                label: Text('Design Qnty',
+                label: Text('Proj Ctrl Qnty',
                     style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: headerFs,
@@ -1730,31 +1603,12 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
                               color: const Color(0xFF334155)),
                         ),
                       ),
-                      // Unit as a small tag
-                      DataCell(
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 9, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFEFF3FA),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            entry.unit,
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.primary,
-                            ),
-                          ),
-                        ),
-                      ),
                       // Sales Total
                       DataCell(
                         Align(
                           alignment: Alignment.centerRight,
                           child: Text(
-                            entry.totalQty,
+                            entry.sTotal ?? '0',
                             style: TextStyle(
                               fontSize: cellFs,
                               fontWeight: FontWeight.w600,
@@ -1766,12 +1620,12 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
                           ),
                         ),
                       ),
-                      // Design Total
+                      // PC Total
                       DataCell(
                         Align(
                           alignment: Alignment.centerRight,
                           child: Text(
-                            entry.designTotal,
+                            entry.pcTotal,
                             style: TextStyle(
                               fontSize: cellFs,
                               fontWeight: FontWeight.w600,
@@ -1786,7 +1640,7 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
                       // Remarks cell
                       DataCell(
                         Text(
-                          entry.dremarks ?? '',
+                          entry.pcremarks ?? '',
                           style: TextStyle(
                             fontSize: cellFs,
                             fontWeight: FontWeight.w400,
@@ -1808,22 +1662,17 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
                               onPressed: () {
                                 // Set the values in the controllers
                                 elenameController.text = entry.elementName;
-                                eleunitController.text = entry.unit;
-                                eletotalController.text = entry.totalQty;
-                                deletotalController.text = entry.designTotal;
-                                delermksController.text = entry.dremarks ?? '';
+                                eletotalController.text = entry.sTotal ?? '';
+                                deletotalController.text = entry.pcTotal;
+                                delermksController.text = entry.pcremarks ?? '';
 
-                                // Find and set the selected element
-                                final selectedElement =
-                                    elementMasterList.firstWhere(
-                                  (e) => e.eleName == entry.elementName,
-                                  orElse: () => elementMasterList.first,
-                                );
-
+                                // ✅ Remove the elementMasterList lookup - it's not needed
+                                // Just remove the entry from the list
                                 setState(() {
-                                  selectedEleCode = selectedElement.eleCode;
-                                  selectedEleName = selectedElement.eleName;
                                   _salesEntries.removeAt(index);
+                                  // Clear any selection (since it's not a dropdown)
+                                  selectedEleCode = null;
+                                  selectedEleName = null;
                                 });
 
                                 ScaffoldMessenger.of(context).showSnackBar(
@@ -1863,13 +1712,13 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
                 },
               ),
 
-              // ── ✅ TOTAL ROW ──
+              // ── ✅ TOTAL ROW (MUST HAVE EXACTLY 6 CELLS) ──
               DataRow(
                 color: WidgetStateProperty.all(
                   Colors.indigo.shade50.withOpacity(0.6),
                 ),
                 cells: [
-                  // Empty S.No
+                  // S.No - Summary Icon
                   DataCell(
                     Container(
                       width: 26,
@@ -1897,25 +1746,6 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
                       ),
                     ),
                   ),
-                  // Empty Unit cell
-                  DataCell(
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 9, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.indigo.shade100,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        '—',
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.indigo.shade600,
-                        ),
-                      ),
-                    ),
-                  ),
                   // ✅ Total Sales
                   DataCell(
                     Align(
@@ -1931,7 +1761,7 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
                       ),
                     ),
                   ),
-                  // ✅ Total Design
+                  // ✅ Total PC
                   DataCell(
                     Align(
                       alignment: Alignment.centerRight,
@@ -1976,35 +1806,24 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
     );
   }
 
-  void _addSalesEntry() {
+  void _addPCEntry() {
     final elementName = elenameController.text.trim();
-    final unit = eleunitController.text.trim();
-    final totalQty = eletotalController.text.trim(); // Sales Total
-    final designTotal = deletotalController.text.trim(); // Design Total
+    final salesTotal = eletotalController.text.trim();
+    final designTotal = deletotalController.text.trim();
     final designRemarks = delermksController.text.trim();
 
     // Validation
     if (elementName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Please select an Element Name"),
+          content: Text("Please enter an Element Name"),
           backgroundColor: Colors.red,
         ),
       );
       return;
     }
 
-    if (unit.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Please select Element Unit"),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    if (totalQty.isEmpty) {
+    if (salesTotal.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("Please enter Sales Total"),
@@ -2030,17 +1849,15 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
 
     // Add new entry
     setState(() {
-      _salesEntries.add(SalesEntryModel(
+      _salesEntries.add(PCEntryModel(
         elementName: elementName,
-        unit: unit,
-        totalQty: totalQty,
-        designTotal: designTotal, // ✅ Make sure this is set
-        dremarks: designRemarks, // ✅ Make sure this is set
+        sTotal: salesTotal,
+        pcTotal: designTotal,
+        pcremarks: designRemarks,
       ));
 
       // Clear ALL fields
       elenameController.clear();
-      eleunitController.clear();
       eletotalController.clear();
       deletotalController.clear();
       delermksController.clear();
@@ -2058,71 +1875,18 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
       ),
     );
   }
-
-  Future<List<ElementMasterModel>> _fetchElementMaster() async {
-    try {
-      final response = await http.post(
-        ApiUtils.getUri('GetSalesElementMaster'),
-        headers: {"Content-Type": "application/json"},
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-
-        if (data['Success'] == true) {
-          final List list = data['Data'];
-
-          return list.map((e) => ElementMasterModel.fromJson(e)).toList();
-        } else {}
-      }
-      return [];
-    } catch (e) {
-      return [];
-    }
-  }
 }
 
-class CapitalizeFirstLetterFormatter extends TextInputFormatter {
+class UpperCaseTextFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(
-      TextEditingValue oldValue, TextEditingValue newValue) {
-    final String value = newValue.text;
-
-    if (value.isEmpty) {
-      return newValue;
-    }
-
-    // Find the first alphabetical character
-    int firstLetterIndex = -1;
-    for (int i = 0; i < value.length; i++) {
-      if (RegExp(r'[a-zA-Z]').hasMatch(value[i])) {
-        firstLetterIndex = i;
-        break;
-      }
-    }
-
-    // If a letter is found and it's lowercase, capitalize it
-    if (firstLetterIndex != -1) {
-      final String firstLetter = value[firstLetterIndex];
-      if (RegExp(r'[a-z]').hasMatch(firstLetter)) {
-        final String beforeLetters = value.substring(0, firstLetterIndex);
-        final String capitalizedLetter = firstLetter.toUpperCase();
-        final String afterLetters =
-            value.substring(firstLetterIndex + 1).toLowerCase();
-
-        final String formattedValue =
-            beforeLetters + capitalizedLetter + afterLetters;
-
-        if (formattedValue != value) {
-          return TextEditingValue(
-            text: formattedValue,
-            selection: TextSelection.collapsed(offset: formattedValue.length),
-          );
-        }
-      }
-    }
-
-    return newValue;
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    return newValue.copyWith(
+      text: newValue.text.toUpperCase(),
+      selection: newValue.selection,
+    );
   }
 }
 

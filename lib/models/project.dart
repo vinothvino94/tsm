@@ -1059,7 +1059,7 @@ class SalesBillingSummaryModel {
   final int? customerId;
   final int? projectId;
   final String? projectCode;
-  final String customerName;
+  final String? customerName;
   final String projectName;
   final double woValueInclGst;
   final double billed;
@@ -1070,7 +1070,7 @@ class SalesBillingSummaryModel {
     this.customerId,
     this.projectId,
     this.projectCode,
-    required this.customerName,
+    this.customerName,
     required this.projectName,
     required this.woValueInclGst,
     required this.billed,
@@ -1373,4 +1373,158 @@ class ElementMasterModel {
   String toString() {
     return 'ElementMasterModel(eleCode: $eleCode, eleName: $eleName, eleUnit: $eleUnit)';
   }
+}
+
+class ProjectcontrolModel {
+  int? SPCNO;
+  int? CUSID;
+  int? PROJID;
+  String? SPCDT;
+  String? SPCNAME;
+  String? SPCTOT;
+  int? SPCSNO;
+
+  // Sales Files
+  String? SFNAME;
+  String? SFTYPE;
+  int? SFCOUNT;
+
+  // Design Files
+  String? PCTOT;
+  String? PCFNAME;
+  String? PCFTYPE;
+  int? PCFCOUNT;
+  String? PCREMKS;
+  int? ADDUSER;
+  int? EDITUSER;
+  int? DELUSER;
+  DateTime? ADDDATE;
+  DateTime? EDITDATE;
+  DateTime? DELDATE;
+  String? DELETED;
+
+  // ✅ Separate removed files
+  String? removedSalesFiles;
+  String? removedDesignFiles;
+
+  // ✅ Separate file upload lists
+  List<FileUploadModel>? salesFiles;
+  List<FileUploadModel>? designFiles;
+
+  // ✅ Keep for backward compatibility (optional)
+  String? removedfiles;
+  List<FileUploadModel>? files;
+
+  ProjectcontrolModel({
+    this.SPCNO,
+    this.CUSID,
+    this.PROJID,
+    this.SPCDT,
+    this.SPCNAME,
+    this.SPCTOT,
+    this.SPCSNO,
+    this.SFNAME,
+    this.SFTYPE,
+    this.SFCOUNT,
+    this.PCFNAME,
+    this.PCFTYPE,
+    this.PCFCOUNT,
+    this.PCTOT,
+    this.PCREMKS,
+    this.ADDUSER,
+    this.EDITUSER,
+    this.DELUSER,
+    this.ADDDATE,
+    this.EDITDATE,
+    this.DELDATE,
+    this.DELETED,
+    this.removedSalesFiles,
+    this.removedDesignFiles,
+    this.salesFiles,
+    this.designFiles,
+    this.removedfiles,
+    this.files,
+  });
+
+  factory ProjectcontrolModel.fromJson(Map<String, dynamic> json) {
+    return ProjectcontrolModel(
+      SPCNO: json['SPCNO'] as int?,
+      CUSID: json['CUSID'] as int?,
+      PROJID: json['PROJID'] as int?,
+      SPCDT: json['SPCDT'] as String?,
+      SPCNAME: json['SPCNAME'] as String?,
+      SPCTOT: json['SPCTOT'] as String?,
+      SPCSNO: json['SPCSNO'] as int?,
+      SFNAME: json['SFNAME'] as String?,
+      SFTYPE: json['SFTYPE'] as String?,
+      SFCOUNT: json['SFCOUNT'] as int?,
+      PCFNAME: json['PCFNAME'] as String?,
+      PCFTYPE: json['PCFTYPE'] as String?,
+      PCFCOUNT: json['PCFCOUNT'] as int?,
+      PCTOT: json['PCTOT'] as String?,
+      PCREMKS: json['PCREMKS'] as String?,
+      ADDUSER: json['ADDUSER'],
+      EDITUSER: json['EDITUSER'],
+      DELUSER: json['DELUSER'],
+      ADDDATE:
+          json['ADDDATE'] != null ? DateTime.tryParse(json['ADDDATE']) : null,
+      EDITDATE:
+          json['EDITDATE'] != null ? DateTime.tryParse(json['EDITDATE']) : null,
+      DELDATE:
+          json['DELDATE'] != null ? DateTime.tryParse(json['DELDATE']) : null,
+      DELETED: json['DELETED'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'SPCNO': SPCNO,
+      'CUSID': CUSID,
+      'PROJID': PROJID,
+      'SPCDT': SPCDT,
+      'SPCNAME': SPCNAME,
+      'SPCTOT': SPCTOT,
+      'SPCSNO': SPCSNO,
+      'SFNAME': SFNAME,
+      'SFTYPE': SFTYPE,
+      'SFCOUNT': SFCOUNT,
+      'PCFNAME': PCFNAME,
+      'PCFTYPE': PCFTYPE,
+      'PCFCOUNT': PCFCOUNT,
+      'PCTOT': PCTOT,
+      'PCREMKS': PCREMKS,
+      'ADDUSER': ADDUSER,
+      'EDITUSER': EDITUSER,
+      'DELUSER': DELUSER,
+      'ADDDATE': ADDDATE?.toIso8601String(),
+      'EDITDATE': EDITDATE?.toIso8601String(),
+      'DELDATE': DELDATE?.toIso8601String(),
+      'DELETED': DELETED,
+      'REMOVEDSALESFILES': removedSalesFiles,
+      'REMOVEDDESIGNFILES': removedDesignFiles,
+      'SALESFILES': salesFiles?.map((f) => f.toJson()).toList(),
+      'DESIGNFILES': designFiles?.map((f) => f.toJson()).toList(),
+      // Keep for backward compatibility
+      'REMOVEDFILES': removedfiles,
+      'FILES': files?.map((f) => f.toJson()).toList(),
+    };
+  }
+}
+
+class PCEntryModel {
+  String elementName;
+  String sTotal;
+  String pcTotal;
+  String pcremarks;
+  final String? sfname;
+  final String? sftype;
+
+  PCEntryModel({
+    required this.elementName,
+    this.sTotal = '',
+    this.pcTotal = '',
+    this.pcremarks = '',
+    this.sfname,
+    this.sftype,
+  });
 }

@@ -8,6 +8,7 @@ import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:tsm/screens/sales/projectcontrol_entry_screen.dart';
 import '../../api/api_utils.dart';
 import '../../colors/app_colors.dart';
 import '../../models/project.dart';
@@ -21,18 +22,19 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:open_file/open_file.dart';
 import 'package:universal_html/html.dart' as html;
 
-class ViewDesignScreen extends StatefulWidget {
+class ViewProjectControlScreen extends StatefulWidget {
   final bool isSuperAdmin;
-  const ViewDesignScreen({
+  const ViewProjectControlScreen({
     super.key,
     this.isSuperAdmin = false,
   });
 
   @override
-  State<ViewDesignScreen> createState() => _ViewDesignScreenState();
+  State<ViewProjectControlScreen> createState() =>
+      _ViewProjectControlScreenState();
 }
 
-class _ViewDesignScreenState extends State<ViewDesignScreen> {
+class _ViewProjectControlScreenState extends State<ViewProjectControlScreen> {
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController customerController = TextEditingController();
   final TextEditingController siteController = TextEditingController();
@@ -47,7 +49,7 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
   bool _hasGenerated = false;
   String _searchQuery = '';
   bool _isRefreshing = false;
-  List<SalesDesignModel> _desingingList = [];
+  List<ProjectcontrolModel> _desingingList = [];
   int empCode = 0;
   String empName = '';
 
@@ -63,7 +65,7 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('View Designing List'),
+        title: const Text('View ProjectControl List'),
       ),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
@@ -257,9 +259,8 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 0),
                 child: TextField(
                   controller: _searchController,
-                  decoration:
-                      _inputDecoration('Search by Entry No / SBNO...').copyWith(
-                    hintText: 'Search by Entry No / SBNO...',
+                  decoration: _inputDecoration('Search by Entry No').copyWith(
+                    hintText: 'Search by Entry No',
                     prefixIcon: const Icon(Icons.search),
                     suffixIcon: _searchQuery.isNotEmpty
                         ? IconButton(
@@ -322,22 +323,20 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
     );
   }
 
-  List<SalesDesignModel> get _filteredDesigningList {
+  List<ProjectcontrolModel> get _filteredDesigningList {
     if (_searchQuery.isEmpty) {
       return _desingingList;
     }
     return _desingingList.where((design) {
       final searchLower = _searchQuery.toLowerCase();
-      return (design.sdno?.toString().contains(_searchQuery) ?? false) ||
-          (design.selename?.toLowerCase().contains(searchLower) ?? false) ||
-          (design.seleunit?.toLowerCase().contains(searchLower) ?? false) ||
-          (design.seletot?.toString().contains(_searchQuery) ?? false) ||
-          (design.selesno?.toString().contains(_searchQuery) ?? false) ||
-          (design.deleqnty?.toLowerCase().contains(searchLower) ?? false) ||
-          (design.deletot?.toString().contains(_searchQuery) ?? false) ||
-          (design.deleremks?.toLowerCase().contains(searchLower) ?? false) ||
-          (design.sfname?.toLowerCase().contains(searchLower) ?? false) ||
-          (design.dfname?.toLowerCase().contains(searchLower) ?? false);
+      return (design.SPCNO?.toString().contains(_searchQuery) ?? false) ||
+          (design.SPCNAME?.toLowerCase().contains(searchLower) ?? false) ||
+          (design.SPCTOT?.toString().contains(_searchQuery) ?? false) ||
+          (design.SPCSNO?.toString().contains(_searchQuery) ?? false) ||
+          (design.PCTOT?.toString().contains(_searchQuery) ?? false) ||
+          (design.PCREMKS?.toLowerCase().contains(searchLower) ?? false) ||
+          (design.SFNAME?.toLowerCase().contains(searchLower) ?? false) ||
+          (design.PCFNAME?.toLowerCase().contains(searchLower) ?? false);
     }).toList();
   }
 
@@ -476,7 +475,7 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
     }
   }
 
-  Widget _buildDesingningCard(SalesDesignModel entry) {
+  Widget _buildDesingningCard(ProjectcontrolModel entry) {
     String formatDate(DateTime? date) {
       if (date == null) return '-';
       return DateFormat('dd-MM-yyyy').format(date);
@@ -493,8 +492,8 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => DesignEntryScreen(
-                designData: entry,
+              builder: (context) => ProjectcontrolEntryScreen(
+                pcData: entry,
                 isReadOnly: true,
                 isSuperAdmin: widget.isSuperAdmin,
                 onDataSaved: () {
@@ -516,7 +515,7 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
                 children: [
                   Expanded(
                     child: Text(
-                      'Entry No - Dt: ${entry.sdno ?? 'N/A'} - ${_formatDate(entry.sddt)}',
+                      'Entry No - Dt: ${entry.SPCNO ?? 'N/A'} - ${_formatDate(entry.SPCDT)}',
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
@@ -531,8 +530,8 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => DesignEntryScreen(
-                                designData: entry,
+                              builder: (context) => ProjectcontrolEntryScreen(
+                                pcData: entry,
                                 isReadOnly: true,
                                 onDataSaved: () {
                                   _fetchDesigningEntries();
@@ -558,8 +557,8 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => DesignEntryScreen(
-                                designData: entry,
+                              builder: (context) => ProjectcontrolEntryScreen(
+                                pcData: entry,
                                 isReadOnly: false,
                                 onDataSaved: () {
                                   _fetchDesigningEntries();
@@ -583,7 +582,7 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
                       if (widget.isSuperAdmin)
                         IconButton(
                           onPressed: () {
-                            _showDeleteConfirmationDialog(entry.sdno);
+                            _showDeleteConfirmationDialog(entry.SPCNO);
                           },
                           icon: const Icon(
                             Icons.delete,
@@ -619,11 +618,11 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
                       IconButton(
                         onPressed: () async {
                           // ✅ Download both Sales and Design files
-                          await DesigningDownloadService.downloadDesignFiles(
+                          await PCDownloadService.downloadPCFiles(
                             context: context,
-                            sdNo: entry.sdno ?? 0,
-                            salesFiles: entry.sfname, // Sales files
-                            designFiles: entry.dfname, // Design files
+                            spcNo: entry.SPCNO ?? 0,
+                            salesFiles: entry.SFNAME, // Sales files
+                            designFiles: entry.PCFNAME, // Design files
                           );
                         },
                         icon: const Icon(
@@ -652,7 +651,7 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Entered By: ${getEmployeeName(entry.adduser)}',
+                      'Entered By: ${getEmployeeName(entry.ADDUSER)}',
                       style: const TextStyle(fontSize: 12),
                     ),
                   ),
@@ -668,7 +667,7 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Entry Date: ${formatDate(entry.adddate)}',
+                      'Entry Date: ${formatDate(entry.ADDDATE)}',
                       style: const TextStyle(fontSize: 12),
                     ),
                   ),
@@ -676,7 +675,7 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
               ),
 
               /// Edited By
-              if (entry.edituser != null)
+              if (entry.EDITUSER != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: Row(
@@ -685,7 +684,7 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Edited By: ${getEmployeeName(entry.edituser)}',
+                          'Edited By: ${getEmployeeName(entry.EDITUSER)}',
                           style: const TextStyle(fontSize: 12),
                         ),
                       ),
@@ -694,7 +693,7 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
                 ),
 
               /// Edit Date
-              if (entry.editdate != null)
+              if (entry.EDITDATE != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: Row(
@@ -704,7 +703,7 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Edit Date: ${formatDate(entry.editdate)}',
+                          'Edit Date: ${formatDate(entry.EDITDATE)}',
                           style: const TextStyle(fontSize: 12),
                         ),
                       ),
@@ -718,41 +717,13 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
     );
   }
 
-  Future<void> _showDeleteConfirmationDialog(int? sdno) async {
-    if (sdno == null) return;
-
-    return showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Delete Billing Entry'),
-          content: Text('Are you sure you want to delete Bill #$sdno?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                _deleteDesigning(sdno);
-              },
-              style: TextButton.styleFrom(foregroundColor: Colors.red),
-              child: const Text('Delete'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   Future<void> _fetchDesigningEntries() async {
     if (!_isRefreshing) {
       setState(() => _isLoading = true);
     }
 
     try {
-      final uri = ApiUtils.getUri('ViewSalesDesinginglist');
+      final uri = ApiUtils.getUri('ViewProjectControllist');
 
       final requestBody = <String, dynamic>{};
       if (selectedCustomerId != null) {
@@ -785,94 +756,84 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
 
           if (list.isNotEmpty) {
             final entries = list
-                .map(
-                    (e) => SalesDesignModel.fromJson(e as Map<String, dynamic>))
+                .map((e) =>
+                    ProjectcontrolModel.fromJson(e as Map<String, dynamic>))
                 .toList();
 
             // ✅ GROUP BY SDNO - Combine all entries into one with comma-separated values
-            final Map<int, SalesDesignModel> groupedEntries = {};
+            final Map<int, ProjectcontrolModel> groupedEntries = {};
 
             for (var entry in entries) {
-              final sdno = entry.sdno ?? 0;
+              final SPCNO = entry.SPCNO ?? 0;
 
-              if (!groupedEntries.containsKey(sdno)) {
+              if (!groupedEntries.containsKey(SPCNO)) {
                 // First entry for this SDNO - copy all data
-                groupedEntries[sdno] = SalesDesignModel(
-                  sdno: entry.sdno,
-                  cusid: entry.cusid,
-                  projid: entry.projid,
-                  sddt: entry.sddt,
-                  selename: entry.selename ?? '',
-                  seleunit: entry.seleunit ?? '',
-                  seletot: entry.seletot ?? '',
-                  selesno: entry.selesno,
-                  sfname: entry.sfname,
-                  sftype: entry.sftype,
-                  sfcount: entry.sfcount,
-                  dfname: entry.dfname,
-                  dftype: entry.dftype,
-                  dfcount: entry.dfcount,
-                  deleqnty: entry.deleqnty,
-                  deletot: entry.deletot,
-                  deleremks: entry.deleremks,
-                  adduser: entry.adduser,
-                  adddate: entry.adddate,
-                  edituser: entry.edituser,
-                  editdate: entry.editdate,
+                groupedEntries[SPCNO] = ProjectcontrolModel(
+                  SPCNO: entry.SPCNO,
+                  SPCDT: entry.SPCDT,
+                  CUSID: entry.CUSID,
+                  PROJID: entry.PROJID,
+                  SPCTOT: entry.SPCTOT,
+                  SPCNAME: entry.SPCNAME ?? '',
+                  SPCSNO: entry.SPCSNO,
+                  SFNAME: entry.SFNAME,
+                  SFTYPE: entry.SFTYPE,
+                  SFCOUNT: entry.SFCOUNT,
+                  PCFNAME: entry.PCFNAME,
+                  PCFTYPE: entry.PCFTYPE,
+                  PCFCOUNT: entry.PCFCOUNT,
+                  PCTOT: entry.PCTOT,
+                  PCREMKS: entry.PCREMKS,
+                  ADDUSER: entry.ADDUSER,
+                  ADDDATE: entry.ADDDATE,
+                  EDITUSER: entry.EDITUSER,
+                  EDITDATE: entry.EDITDATE,
                 );
               } else {
                 // ✅ Combine data with existing entry (append to comma-separated lists)
-                final existing = groupedEntries[sdno]!;
+                final existing = groupedEntries[SPCNO]!;
 
                 // Combine SELENAME, SELEUNIT, SELETOT
-                if (entry.selename != null && entry.selename!.isNotEmpty) {
-                  if (existing.selename == null || existing.selename!.isEmpty) {
-                    existing.selename = entry.selename;
+                if (entry.SPCNAME != null && entry.SPCNAME!.isNotEmpty) {
+                  if (existing.SPCNAME == null || existing.SPCNAME!.isEmpty) {
+                    existing.SPCNAME = entry.SPCNAME;
                   } else {
-                    existing.selename =
-                        '${existing.selename},${entry.selename}';
+                    existing.SPCNAME = '${existing.SPCNAME},${entry.SPCNAME}';
                   }
                 }
-                if (entry.seleunit != null && entry.seleunit!.isNotEmpty) {
-                  if (existing.seleunit == null || existing.seleunit!.isEmpty) {
-                    existing.seleunit = entry.seleunit;
+
+                if (entry.SPCTOT != null && entry.SPCTOT!.isNotEmpty) {
+                  if (existing.SPCTOT == null || existing.SPCTOT!.isEmpty) {
+                    existing.SPCTOT = entry.SPCTOT;
                   } else {
-                    existing.seleunit =
-                        '${existing.seleunit},${entry.seleunit}';
-                  }
-                }
-                if (entry.seletot != null && entry.seletot!.isNotEmpty) {
-                  if (existing.seletot == null || existing.seletot!.isEmpty) {
-                    existing.seletot = entry.seletot;
-                  } else {
-                    existing.seletot = '${existing.seletot},${entry.seletot}';
+                    existing.SPCTOT = '${existing.SPCTOT},${entry.SPCTOT}';
                   }
                 }
 
                 // Combine file names (if different files)
-                if (entry.sfname != null && entry.sfname!.isNotEmpty) {
-                  if (existing.sfname == null || existing.sfname!.isEmpty) {
-                    existing.sfname = entry.sfname;
-                    existing.sftype = entry.sftype;
-                    existing.sfcount = entry.sfcount;
-                  } else if (!existing.sfname!.contains(entry.sfname!)) {
-                    existing.sfname = '${existing.sfname},${entry.sfname}';
+                if (entry.SFNAME != null && entry.SFNAME!.isNotEmpty) {
+                  if (existing.SFNAME == null || existing.SFNAME!.isEmpty) {
+                    existing.SFNAME = entry.SFNAME;
+                    existing.SFTYPE = entry.SFTYPE;
+                    existing.SFCOUNT = entry.SFCOUNT;
+                  } else if (!existing.SFNAME!.contains(entry.SFNAME!)) {
+                    existing.SFNAME = '${existing.SFNAME},${entry.SFNAME}';
                   }
                 }
 
                 // ✅ Combine Design file names
-                if (entry.dfname != null && entry.dfname!.isNotEmpty) {
-                  if (existing.dfname == null || existing.dfname!.isEmpty) {
-                    existing.dfname = entry.dfname;
-                    existing.dftype = entry.dftype;
-                    existing.dfcount = entry.dfcount;
-                  } else if (!existing.dfname!.contains(entry.dfname!)) {
-                    existing.dfname = '${existing.dfname},${entry.dfname}';
+                if (entry.PCFNAME != null && entry.PCFNAME!.isNotEmpty) {
+                  if (existing.PCFNAME == null || existing.PCFNAME!.isEmpty) {
+                    existing.PCFNAME = entry.PCFNAME;
+                    existing.PCFTYPE = entry.PCFTYPE;
+                    existing.PCFCOUNT = entry.PCFCOUNT;
+                  } else if (!existing.PCFNAME!.contains(entry.PCFNAME!)) {
+                    existing.PCFNAME = '${existing.PCFNAME},${entry.PCFNAME}';
                   }
                 }
 
                 // Update SELESNO (total count of entries)
-                existing.selesno = (existing.selesno ?? 0) + 1;
+                existing.SPCSNO = (existing.SPCSNO ?? 0) + 1;
               }
             }
 
@@ -881,8 +842,8 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
 
             // Sort by SDNO descending (latest first)
             groupedList.sort((a, b) {
-              final aSdno = a.sdno ?? 0;
-              final bSdno = b.sdno ?? 0;
+              final aSdno = a.SPCNO ?? 0;
+              final bSdno = b.SPCNO ?? 0;
               return bSdno.compareTo(aSdno);
             });
 
@@ -896,7 +857,7 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
             // ✅ Debug: Print the combined values
             for (var entry in groupedList) {
               debugPrint(
-                  'SDNO: ${entry.sdno}, SELENAME: ${entry.selename}, SFNAME: ${entry.sfname}');
+                  'SDNO: ${entry.SPCNO}, SELENAME: ${entry.SPCNAME}, SFNAME: ${entry.SFNAME}');
             }
           } else {
             debugPrint('DesigningList is empty');
@@ -958,27 +919,30 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
     return empCodeValue.toString();
   }
 
-  Future<void> _deleteDesigning(int sdno) async {
+  Future<void> _deleteDesigning(int spcNo) async {
     setState(() => _isLoading = true);
 
     try {
       final requestBody = {
-        "SDNO": sdno,
+        "SPCNO": spcNo,
         "DELUSER": empCode,
       };
 
+      debugPrint('Soft deleting all entries for SPCNO: $spcNo');
+
       final response = await http.post(
-        ApiUtils.getUri('DeleteSalesdesigninglist'),
+        ApiUtils.getUri('DeletePClist'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(requestBody),
       );
 
       final data = jsonDecode(response.body);
+      debugPrint('Delete response: $data');
 
       if (data['Success'] == true) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Designing entry deleted successfully'),
+          SnackBar(
+            content: Text(data['Message'] ?? 'Entry deleted successfully'),
             backgroundColor: Colors.green,
           ),
         );
@@ -993,6 +957,7 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
         );
       }
     } catch (e) {
+      debugPrint('Error deleting: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error: $e'),
@@ -1002,6 +967,34 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
     } finally {
       setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _showDeleteConfirmationDialog(int? spcNo) async {
+    if (spcNo == null) return;
+
+    return showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Delete Project Control Entry'),
+          content: Text('Are you sure you want to delete entry #$spcNo ?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _deleteDesigning(spcNo);
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   String _formatDate(String? dateString) {
@@ -1018,35 +1011,32 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
     }
   }
 
-  Future<void> _generateSalesEntriesPDF(SalesDesignModel entry) async {
+  Future<void> _generateSalesEntriesPDF(ProjectcontrolModel entry) async {
     // ✅ Parse sales entries from the entry data
-    final List<SalesEntryModel> salesEntries = [];
+    final List<ProjectcontrolModel> pcEntries = [];
 
-    final elementNames = entry.selename
+    final elementNames = entry.SPCNAME
             ?.split(',')
             .map((s) => s.trim())
             .where((s) => s.isNotEmpty)
             .toList() ??
         [];
-    final elementUnits = entry.seleunit
+
+    final elementTotals = entry.SPCTOT
             ?.split(',')
             .map((s) => s.trim())
             .where((s) => s.isNotEmpty)
             .toList() ??
         [];
-    final elementTotals = entry.seletot
+
+    final designTotals = entry.PCTOT
             ?.split(',')
             .map((s) => s.trim())
             .where((s) => s.isNotEmpty)
             .toList() ??
         [];
-    final designTotals = entry.deletot
-            ?.split(',')
-            .map((s) => s.trim())
-            .where((s) => s.isNotEmpty)
-            .toList() ??
-        [];
-    final remarks = entry.deleremks
+
+    final remarks = entry.PCREMKS
             ?.split(',')
             .map((s) => s.trim())
             .where((s) => s.isNotEmpty)
@@ -1054,18 +1044,17 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
         [];
 
     for (int i = 0; i < elementNames.length; i++) {
-      salesEntries.add(SalesEntryModel(
-        elementName: elementNames[i],
-        unit: i < elementUnits.length ? elementUnits[i] : '',
-        totalQty: i < elementTotals.length ? elementTotals[i] : '0',
-        designTotal: i < designTotals.length ? designTotals[i] : '0',
-        dremarks: i < remarks.length ? remarks[i] : '',
+      pcEntries.add(ProjectcontrolModel(
+        SPCNAME: elementNames[i],
+        SPCTOT: i < elementTotals.length ? elementTotals[i] : '0',
+        PCTOT: i < designTotals.length ? designTotals[i] : '0',
+        PCREMKS: i < remarks.length ? remarks[i] : '',
       ));
     }
 
-    debugPrint('Parsed ${salesEntries.length} sales entries');
+    debugPrint('Parsed ${pcEntries.length} sales entries');
 
-    if (salesEntries.isEmpty) {
+    if (pcEntries.isEmpty) {
       debugPrint('No sales entries found');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1079,7 +1068,7 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
     final pdf = pw.Document();
 
     final String formattedDate = getFileSafeDateTimeFormatted();
-    final String fileName = "Design_Entry_${entry.sdno}_$formattedDate.pdf";
+    final String fileName = "PC_Entry_${entry.SPCNO}_$formattedDate.pdf";
     debugPrint('Generated fileName: $fileName');
 
     // Format date
@@ -1092,9 +1081,9 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
     String customerName = '';
     String projectName = '';
 
-    if (entry.cusid != null) {
+    if (entry.CUSID != null) {
       final matchedCustomer = customerList.firstWhere(
-        (c) => c.customerId == entry.cusid,
+        (c) => c.customerId == entry.CUSID,
         orElse: () {
           debugPrint('Customer not found in customerList, returning default');
           return ChecklistCustomer(customerId: 0, companyName: '');
@@ -1104,9 +1093,9 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
       debugPrint('Customer name: $customerName');
     }
 
-    if (entry.projid != null) {
+    if (entry.PROJID != null) {
       final matchedProject = projectList.firstWhere(
-        (p) => p.projectId == entry.projid,
+        (p) => p.projectId == entry.PROJID,
         orElse: () {
           debugPrint('Project not found in projectList, returning default');
           return Project(projectId: 0, projectName: '');
@@ -1119,35 +1108,35 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
     // Calculate totals
     double totalSales = 0;
     double totalDesign = 0;
-    for (var item in salesEntries) {
-      totalSales += double.tryParse(item.totalQty.replaceAll(',', '')) ?? 0;
-      totalDesign += double.tryParse(item.designTotal.replaceAll(',', '')) ?? 0;
+    for (var item in pcEntries) {
+      totalSales +=
+          double.tryParse(item.SPCTOT?.replaceAll(',', '') ?? '0') ?? 0;
+      totalDesign +=
+          double.tryParse(item.PCTOT?.replaceAll(',', '') ?? '0') ?? 0;
     }
 
     final headers = [
       'S.No',
       'Element Name',
-      'Unit',
       'Sales Qnty',
-      'Design Qnty',
+      'PC Qnty',
       'Remarks',
     ];
 
     final List<List<String>> data = [];
-    debugPrint('Building data rows for ${salesEntries.length} entries...');
+    debugPrint('Building data rows for ${pcEntries.length} entries...');
 
-    for (int i = 0; i < salesEntries.length; i++) {
-      final item = salesEntries[i];
+    for (int i = 0; i < pcEntries.length; i++) {
+      final item = pcEntries[i];
       debugPrint(
-          'Processing entry ${i + 1}/${salesEntries.length}: ${item.elementName}');
+          'Processing entry ${i + 1}/${pcEntries.length}: ${item.SPCNAME}');
 
       data.add([
         '${i + 1}',
-        item.elementName,
-        item.unit,
-        item.totalQty,
-        item.designTotal,
-        item.dremarks ?? '',
+        item.SPCNAME ?? '',
+        item.SPCTOT ?? '',
+        item.PCTOT ?? '',
+        item.PCREMKS ?? '',
       ]);
     }
 
@@ -1169,7 +1158,7 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
                   child: pw.Text(
                     header,
                     style: pw.TextStyle(
-                      fontSize: 10, // ✅ Increased from 8 to 10
+                      fontSize: 10,
                       fontWeight: pw.FontWeight.bold,
                     ),
                     textAlign: pw.TextAlign.center,
@@ -1179,57 +1168,44 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
             ),
           );
 
-          // Add data rows - Increased font size to 9
+          // Add data rows - CORRECTED INDEXES
           for (var row in data) {
             tableRows.add(
               pw.TableRow(
                 children: [
-                  // S.No
+                  // S.No (index 0)
                   pw.Padding(
                     padding: const pw.EdgeInsets.all(6),
                     child: pw.Text(row[0],
-                        style: const pw.TextStyle(
-                            fontSize: 9), // ✅ Increased from 8 to 9
+                        style: const pw.TextStyle(fontSize: 9),
                         textAlign: pw.TextAlign.center),
                   ),
-                  // Element Name
+                  // Element Name (index 1)
                   pw.Padding(
                     padding: const pw.EdgeInsets.all(6),
                     child: pw.Text(row[1],
-                        style: const pw.TextStyle(
-                            fontSize: 9), // ✅ Increased from 8 to 9
+                        style: const pw.TextStyle(fontSize: 9),
                         textAlign: pw.TextAlign.left),
                   ),
-                  // Unit
+                  // Sales Qnty (index 2)
                   pw.Padding(
                     padding: const pw.EdgeInsets.all(6),
                     child: pw.Text(row[2],
-                        style: const pw.TextStyle(
-                            fontSize: 9), // ✅ Increased from 8 to 9
+                        style: const pw.TextStyle(fontSize: 9),
                         textAlign: pw.TextAlign.center),
                   ),
-                  // Sales Qnty
+                  // PC Qnty (index 3)
                   pw.Padding(
                     padding: const pw.EdgeInsets.all(6),
                     child: pw.Text(row[3],
-                        style: const pw.TextStyle(
-                            fontSize: 9), // ✅ Increased from 8 to 9
+                        style: const pw.TextStyle(fontSize: 9),
                         textAlign: pw.TextAlign.center),
                   ),
-                  // Design Qnty
+                  // Remarks (index 4)
                   pw.Padding(
                     padding: const pw.EdgeInsets.all(6),
                     child: pw.Text(row[4],
-                        style: const pw.TextStyle(
-                            fontSize: 9), // ✅ Increased from 8 to 9
-                        textAlign: pw.TextAlign.center),
-                  ),
-                  // Remarks
-                  pw.Padding(
-                    padding: const pw.EdgeInsets.all(6),
-                    child: pw.Text(row[5],
-                        style: const pw.TextStyle(
-                            fontSize: 9), // ✅ Increased from 8 to 9
+                        style: const pw.TextStyle(fontSize: 9),
                         textAlign: pw.TextAlign.left),
                   ),
                 ],
@@ -1237,7 +1213,7 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
             );
           }
 
-          // Add total row with background color - Increased font size to 10
+          // Add total row with background color
           tableRows.add(
             pw.TableRow(
               decoration: const pw.BoxDecoration(color: PdfColors.green100),
@@ -1246,54 +1222,35 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
                   padding: const pw.EdgeInsets.all(6),
                   child: pw.Text('',
                       style: pw.TextStyle(
-                          fontSize: 10,
-                          fontWeight:
-                              pw.FontWeight.bold), // ✅ Increased from 8 to 10
+                          fontSize: 10, fontWeight: pw.FontWeight.bold),
                       textAlign: pw.TextAlign.center),
                 ),
                 pw.Padding(
                   padding: const pw.EdgeInsets.all(6),
                   child: pw.Text('TOTAL',
                       style: pw.TextStyle(
-                          fontSize: 10,
-                          fontWeight:
-                              pw.FontWeight.bold), // ✅ Increased from 8 to 10
+                          fontSize: 10, fontWeight: pw.FontWeight.bold),
                       textAlign: pw.TextAlign.left),
-                ),
-                pw.Padding(
-                  padding: const pw.EdgeInsets.all(6),
-                  child: pw.Text('',
-                      style: pw.TextStyle(
-                          fontSize: 10,
-                          fontWeight:
-                              pw.FontWeight.bold), // ✅ Increased from 8 to 10
-                      textAlign: pw.TextAlign.center),
                 ),
                 pw.Padding(
                   padding: const pw.EdgeInsets.all(6),
                   child: pw.Text(totalSales.toStringAsFixed(0),
                       style: pw.TextStyle(
-                          fontSize: 10,
-                          fontWeight:
-                              pw.FontWeight.bold), // ✅ Increased from 8 to 10
+                          fontSize: 10, fontWeight: pw.FontWeight.bold),
                       textAlign: pw.TextAlign.center),
                 ),
                 pw.Padding(
                   padding: const pw.EdgeInsets.all(6),
                   child: pw.Text(totalDesign.toStringAsFixed(0),
                       style: pw.TextStyle(
-                          fontSize: 10,
-                          fontWeight:
-                              pw.FontWeight.bold), // ✅ Increased from 8 to 10
+                          fontSize: 10, fontWeight: pw.FontWeight.bold),
                       textAlign: pw.TextAlign.center),
                 ),
                 pw.Padding(
                   padding: const pw.EdgeInsets.all(6),
                   child: pw.Text('',
                       style: pw.TextStyle(
-                          fontSize: 10,
-                          fontWeight:
-                              pw.FontWeight.bold), // ✅ Increased from 8 to 10
+                          fontSize: 10, fontWeight: pw.FontWeight.bold),
                       textAlign: pw.TextAlign.left),
                 ),
               ],
@@ -1328,7 +1285,7 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
                                         fontSize: 12)),
                               ),
                               pw.Expanded(
-                                child: pw.Text(entry.sdno?.toString() ?? '-',
+                                child: pw.Text(entry.SPCNO?.toString() ?? '-',
                                     style: pw.TextStyle(
                                         fontWeight: pw.FontWeight.bold,
                                         fontSize: 12)),
@@ -1338,8 +1295,8 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
                                       fontWeight: pw.FontWeight.bold,
                                       fontSize: 10)),
                               pw.Text(
-                                  formatDate(entry.sddt != null
-                                      ? DateTime.tryParse(entry.sddt!)
+                                  formatDate(entry.SPCDT != null
+                                      ? DateTime.tryParse(entry.SPCDT!)
                                       : null),
                                   style: pw.TextStyle(
                                       fontWeight: pw.FontWeight.bold,
@@ -1395,7 +1352,7 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
                   ],
                 ),
               ),
-              // ✅ Footer at the bottom of the page
+              // Footer at the bottom of the page
               pw.Container(
                 margin: const pw.EdgeInsets.only(top: 10),
                 child: pw.Row(
@@ -1418,6 +1375,7 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
 
     final pdfBytes = await pdf.save();
 
+    // ✅ Save/Download PDF
     if (kIsWeb) {
       final blob = html.Blob([pdfBytes], 'application/pdf');
       final url = html.Url.createObjectUrlFromBlob(blob);
@@ -1426,7 +1384,7 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
         ..click();
       html.Url.revokeObjectUrl(url);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("✅ PDF saved to:\n$fileName")),
+        const SnackBar(content: Text("✅ PDF downloaded successfully!")),
       );
     } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
       final downloadsPath = await getDownloadsDirectory();
@@ -1444,18 +1402,17 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
         );
       }
     } else {
+      // Mobile (Android/iOS)
       final dir = await getTemporaryDirectory();
       final file = File('${dir.path}/$fileName');
       await file.writeAsBytes(pdfBytes);
 
-      // Share the file on mobile
       try {
         await Share.shareXFiles(
           [XFile(file.path)],
-          text: "Design Entry Report - SDNO: ${entry.sdno}",
+          text: "Design Entry Report - SDNO: ${entry.SPCNO}",
         );
       } catch (e) {
-        // If share fails, at least show the file location
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("PDF saved at: ${file.path}")),
         );
@@ -1464,15 +1421,15 @@ class _ViewDesignScreenState extends State<ViewDesignScreen> {
   }
 }
 
-class DesigningDownloadService {
-  static Future<Map<String, dynamic>?> _getDesigningFiles({
-    required int sdNo,
+class PCDownloadService {
+  static Future<Map<String, dynamic>?> _getPCFiles({
+    required int spcNo,
   }) async {
     try {
       final response = await http.post(
-        ApiUtils.getUri('GetDesigningFiles'),
+        ApiUtils.getUri('GetPROJCTRLFiles'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({"SDNO": sdNo}),
+        body: jsonEncode({"SPCNO": spcNo}),
       );
 
       print('GetDesigningFiles Response: ${response.body}');
@@ -1490,9 +1447,9 @@ class DesigningDownloadService {
     }
   }
 
-  static Future<void> downloadDesignFiles({
+  static Future<void> downloadPCFiles({
     required BuildContext context,
-    required int sdNo,
+    required int spcNo,
     String? salesFiles,
     String? designFiles,
   }) async {
@@ -1519,10 +1476,10 @@ class DesigningDownloadService {
 
     // If no files provided, try to fetch from API
     if (salesFileList.isEmpty && designFileList.isEmpty) {
-      final filesData = await _getDesigningFiles(sdNo: sdNo);
+      final filesData = await _getPCFiles(spcNo: spcNo);
 
       if (filesData == null) {
-        _showNoFilesDialog(context, sdNo);
+        _showNoFilesDialog(context, spcNo);
         return;
       }
 
@@ -1545,7 +1502,7 @@ class DesigningDownloadService {
       }
 
       if (salesFileList.isEmpty && designFileList.isEmpty) {
-        _showNoFilesDialog(context, sdNo);
+        _showNoFilesDialog(context, spcNo);
         return;
       }
     }
@@ -1580,7 +1537,7 @@ class DesigningDownloadService {
 
     for (final fileName in allFiles) {
       try {
-        await _downloadFile(fileName, sdNo);
+        await _downloadFile(fileName, spcNo);
         success.add(fileName);
         print('✓ Downloaded: $fileName');
       } catch (e) {
@@ -1597,7 +1554,7 @@ class DesigningDownloadService {
       print('Original filename from DB: "$fileName"');
 
       final response = await http.post(
-        ApiUtils.getUri('DownloaddesignFile'),
+        ApiUtils.getUri('DownloadPCFile'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({"fileName": fileName}),
       );
