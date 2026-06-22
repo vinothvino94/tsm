@@ -1528,3 +1528,22 @@ class PCEntryModel {
     this.sftype,
   });
 }
+
+class SecureAdvanceEntry {
+  final double amount;
+  final String remarks;
+  const SecureAdvanceEntry({required this.amount, required this.remarks});
+}
+
+class NetAmountRecd {
+  final double amount;
+  final String remarks;
+  final String date; // stored as formatted string e.g. "2024-06-24"
+  final double? outstanding;
+
+  const NetAmountRecd(
+      {required this.amount,
+      required this.remarks,
+      required this.date,
+      this.outstanding});
+}
