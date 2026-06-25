@@ -90,7 +90,7 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
   TextEditingController TDSCGSTController = TextEditingController();
   TextEditingController TDSSGSTController = TextEditingController();
   TextEditingController labcessController = TextEditingController();
-
+  final TextEditingController stageRemarksController = TextEditingController();
   late final TextEditingController _invDateController = TextEditingController();
   late final TextEditingController _recDateController = TextEditingController();
 
@@ -152,6 +152,7 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
 
   @override
   void dispose() {
+    stageRemarksController.dispose();
     amountController.removeListener(_calculateTotals);
     gstController.removeListener(_calculateTotals);
     gstAmountController.dispose();
@@ -2553,7 +2554,8 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
         'CUSID': selectedCustomerId,
         'PROJID': selectedProjectId,
         'STAGEIDNAME': _stageEntries
-            .map((e) => '${e['stageId']}\$${e['stageName']}')
+            .map((e) =>
+                '${e['stageId']}\$${e['stageName']}\$${e['stageRemarks']}')
             .join('@'), // ← @ as separator like other remarks fields
 
         'BILLNO': invnoController.text.trim(),
@@ -2812,7 +2814,7 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
           children: [
             // ── 1. Stage Dropdown ────────────────────────────────────
             SizedBox(
-              width: 500,
+              width: 290,
               child: isLoadingStages
                   ? const Center(
                       child: Padding(
@@ -2871,7 +2873,7 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
 
             // ── 2. Stage Name ────────────────────────────────────────
             SizedBox(
-              width: 500,
+              width: 350,
               child: TextFormField(
                 controller: stageController,
                 decoration: InputDecoration(
@@ -2907,6 +2909,41 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
                     setState(() => selectedstageId = null);
                   }
                 },
+              ),
+            ),
+            const SizedBox(width: 14),
+
+            // ── 2b. Stage Remarks ────────────────────────────────────  ← ADD THIS
+            SizedBox(
+              width: 350,
+              child: TextFormField(
+                controller: stageRemarksController,
+                inputFormatters: [
+                  UpperCaseTextFormatter(),
+                ],
+                decoration: InputDecoration(
+                  labelText: "Remarks",
+                  hintText: "Enter remarks",
+                  border: const OutlineInputBorder(),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  suffixIcon:
+                      stageRemarksController.text.isNotEmpty && !isViewOnly
+                          ? IconButton(
+                              icon: const Icon(Icons.clear, size: 18),
+                              onPressed: () {
+                                setState(() {
+                                  stageRemarksController.clear();
+                                });
+                              },
+                              padding: EdgeInsets.zero,
+                              tooltip: 'Clear value',
+                            )
+                          : null,
+                ),
+                readOnly: isViewOnly,
+                enabled: !isViewOnly,
+                onChanged: (_) => setState(() {}),
               ),
             ),
             const SizedBox(width: 14),
@@ -2948,7 +2985,7 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
               ],
             ),
 
-            const SizedBox(width: 250),
+            const SizedBox(width: 240),
 
             // ── 4. Stage Table (RIGHT side) ──────────────────────────
             if (_stageEntries.isNotEmpty)
@@ -2975,143 +3012,167 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
                   color: Colors.grey.shade600)),
         );
 
-    return Card(
-      elevation: 0,
-      margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey.shade200),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
-            columnSpacing: 20,
-            horizontalMargin: 16,
-            headingRowHeight: 46,
-            dataRowMinHeight: 50,
-            dataRowMaxHeight: double.infinity,
-            headingRowColor: WidgetStateProperty.all(const Color(0xFFF8FAFC)),
-            columns: [
-              const DataColumn(
-                label: SizedBox(
-                  width: 36,
-                  child: Text('S.No',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13,
-                          color: Color(0xFF1E293B))),
-                ),
-              ),
-              const DataColumn(
-                label: Text('Stage ID',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                        color: Color(0xFF1E293B))),
-              ),
-              const DataColumn(
-                label: Text('Stage Name',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                        color: Color(0xFF1E293B))),
-              ),
-              if (!isViewOnly)
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 600), // ← limit table width
+      child: Card(
+        elevation: 0,
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: Colors.grey.shade200),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Theme(
+          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: DataTable(
+              columnSpacing: 16, // ← reduce from 20
+              horizontalMargin: 12, // ← reduce from 16
+              headingRowHeight: 46,
+              dataRowMinHeight: 50,
+              dataRowMaxHeight: double.infinity,
+              headingRowColor: WidgetStateProperty.all(const Color(0xFFF8FAFC)),
+              columns: [
                 const DataColumn(
                   label: SizedBox(
-                    width: 80,
-                    child: Text('Actions',
-                        textAlign: TextAlign.center,
+                    width: 30, // ← reduce from 36
+                    child: Text('S.No',
                         style: TextStyle(
                             fontWeight: FontWeight.w700,
                             fontSize: 13,
                             color: Color(0xFF1E293B))),
                   ),
                 ),
-            ],
-            rows: List.generate(_stageEntries.length, (i) {
-              final entry = _stageEntries[i];
-              return DataRow(
-                color: WidgetStateProperty.all(
-                    i % 2 == 0 ? Colors.white : const Color(0xFFFAFBFD)),
-                cells: [
-                  // S.No
-                  DataCell(badge(i)),
-
-                  // Stage ID
-                  DataCell(Text(
-                    entry['stageId']!.isEmpty ? '—' : entry['stageId']!,
-                    style:
-                        const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
-                  )),
-
-                  // Stage Name
-                  DataCell(Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    child: SizedBox(
-                      width: 180,
-                      child: Text(entry['stageName']!,
+                const DataColumn(
+                  label: Text('Stage ID',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                          color: Color(0xFF1E293B))),
+                ),
+                const DataColumn(
+                  label: Text('Stage Name',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                          color: Color(0xFF1E293B))),
+                ),
+                const DataColumn(
+                  label: Text('Remarks',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                          color: Color(0xFF1E293B))),
+                ),
+                if (!isViewOnly)
+                  const DataColumn(
+                    label: SizedBox(
+                      width: 70, // ← reduce from 80
+                      child: Text('Actions',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                              color: Color(0xFF1E293B))),
+                    ),
+                  ),
+              ],
+              rows: List.generate(_stageEntries.length, (i) {
+                final entry = _stageEntries[i];
+                return DataRow(
+                  color: WidgetStateProperty.all(
+                      i % 2 == 0 ? Colors.white : const Color(0xFFFAFBFD)),
+                  cells: [
+                    DataCell(badge(i)),
+                    DataCell(Text(
+                      entry['stageId']!.isEmpty ? '—' : entry['stageId']!,
+                      style: const TextStyle(
+                          fontSize: 13, color: Color(0xFF64748B)),
+                    )),
+                    DataCell(Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      child: SizedBox(
+                        width: 120, // ← reduce from 180
+                        child: Text(entry['stageName']!,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF1E293B),
+                            ),
+                            softWrap: true,
+                            overflow: TextOverflow.visible),
+                      ),
+                    )),
+                    DataCell(Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      child: SizedBox(
+                        width: 120, // ← reduce from 180
+                        child: Text(
+                          entry['stageRemarks']!.isEmpty
+                              ? '—'
+                              : entry['stageRemarks']!,
                           style: const TextStyle(
                             fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFF1E293B),
+                            fontWeight: FontWeight.w400,
+                            color: Color(0xFF64748B),
                           ),
                           softWrap: true,
-                          overflow: TextOverflow.visible),
-                    ),
-                  )),
-
-                  // Actions
-                  if (!isViewOnly)
-                    DataCell(Row(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        _ActionIconButton(
-                          icon: Icons.edit_outlined,
-                          color: const Color(0xFF2563EB),
-                          tooltip: 'Edit',
-                          onPressed: () {
-                            stageController.text = entry['stageName']!;
-                            setState(() {
-                              selectedstageId = entry['stageId']!.isEmpty
-                                  ? null
-                                  : entry['stageId'];
-                              _stageEntries.removeAt(i);
-                            });
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                    'Edit the entry and click Add to update'),
-                                backgroundColor: Colors.orange,
-                                duration: Duration(seconds: 2),
-                              ),
-                            );
-                          },
+                          overflow: TextOverflow.visible,
                         ),
-                        const SizedBox(width: 6),
-                        _ActionIconButton(
-                          icon: Icons.delete_outline,
-                          color: const Color(0xFFDC2626),
-                          tooltip: 'Delete',
-                          onPressed: () {
-                            setState(() => _stageEntries.removeAt(i));
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                              content:
-                                  Text('Deleted stage: ${entry['stageName']}'),
-                              backgroundColor: Colors.red,
-                              duration: const Duration(seconds: 1),
-                            ));
-                          },
-                        ),
-                      ],
+                      ),
                     )),
-                ],
-              );
-            }),
+                    if (!isViewOnly)
+                      DataCell(Row(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          _ActionIconButton(
+                            icon: Icons.edit_outlined,
+                            color: const Color(0xFF2563EB),
+                            tooltip: 'Edit',
+                            onPressed: () {
+                              stageController.text = entry['stageName']!;
+                              stageRemarksController.text =
+                                  entry['stageRemarks'] ?? '';
+                              setState(() {
+                                selectedstageId = entry['stageId']!.isEmpty
+                                    ? null
+                                    : entry['stageId'];
+                                _stageEntries.removeAt(i);
+                              });
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                      'Edit the entry and click Add to update'),
+                                  backgroundColor: Colors.orange,
+                                  duration: Duration(seconds: 2),
+                                ),
+                              );
+                            },
+                          ),
+                          const SizedBox(width: 6),
+                          _ActionIconButton(
+                            icon: Icons.delete_outline,
+                            color: const Color(0xFFDC2626),
+                            tooltip: 'Delete',
+                            onPressed: () {
+                              setState(() => _stageEntries.removeAt(i));
+                              ScaffoldMessenger.of(context)
+                                  .showSnackBar(SnackBar(
+                                content: Text(
+                                    'Deleted stage: ${entry['stageName']}'),
+                                backgroundColor: Colors.red,
+                                duration: const Duration(seconds: 1),
+                              ));
+                            },
+                          ),
+                        ],
+                      )),
+                  ],
+                );
+              }),
+            ),
           ),
         ),
       ),
@@ -3121,6 +3182,7 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
   void _addStageEntry() {
     final stageId = selectedstageId ?? '';
     final stageName = stageController.text.trim();
+    final stageRemarks = stageRemarksController.text.trim(); // ← add
 
     if (stageName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -3131,9 +3193,14 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
     }
 
     setState(() {
-      _stageEntries.add({'stageId': stageId, 'stageName': stageName});
+      _stageEntries.add({
+        'stageId': stageId,
+        'stageName': stageName,
+        'stageRemarks': stageRemarks, // ← add
+      });
       selectedstageId = null;
       stageController.clear();
+      stageRemarksController.clear(); // ← add
     });
 
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -3725,159 +3792,48 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
   }
 
   Future<void> fetchWorkOrderValue(int customerId, int projectId) async {
-    // Check if we already have data for this project to avoid unnecessary API calls
-    if (_woValueInclGst != null && _woValueInclGst! > 0) {
-      debugPrint(
-          '✅ WO Value already available: $_woValueInclGst - Skipping API call');
-      return;
-    }
-
     setState(() {
       _isLoading = true;
-      // Show loading indicator in the field
       woValueController.text = 'Loading...';
     });
 
     try {
-      // Build the URL with query parameters
-      final uri = ApiUtils.getUri('GetSalesBillingSummary').replace(
-        queryParameters: {
-          'customerId': customerId.toString(),
-          'projectId': projectId.toString(),
-        },
-      );
+      final uri = ApiUtils.getUri('GetWorkOrderValue');
 
-      debugPrint('📡 API URL: $uri');
-
-      final response = await http.post(
-        uri,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      ).timeout(
-        const Duration(seconds: 30),
-        onTimeout: () {
-          debugPrint('⏰ Request timeout');
-          throw Exception('Request timeout');
-        },
-      );
+      final response = await http
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'CUSID': customerId,
+              'PROJID': projectId,
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> jsonResponse = json.decode(response.body);
+        final json = jsonDecode(response.body);
 
-        // Check if the response contains data
-        if (jsonResponse['Success'] == true && jsonResponse['Data'] != null) {
-          dynamic data = jsonResponse['Data'];
+        if (json['Success'] == true && json['Data'] != null) {
+          final double woValue =
+              (json['Data']['WOVALUEINCLGST'] as num).toDouble();
 
-          Map<String, dynamic>? summaryData;
-
-          if (data is List) {
-            // ✅ FILTER: Find the matching project by CUSTOMERID and PROJECTID
-            // First, try to find exact match
-            Map<String, dynamic>? exactMatch;
-            for (var item in data) {
-              if (item['CUSTOMERID'] == customerId &&
-                  item['PROJECTID'] == projectId) {
-                exactMatch = item as Map<String, dynamic>;
-
-                break;
-              }
-            }
-
-            if (exactMatch != null) {
-              summaryData = exactMatch;
-            } else {
-              // If no exact match, try to find by PROJECTID only
-
-              Map<String, dynamic>? projectMatch;
-              for (var item in data) {
-                if (item['PROJECTID'] == projectId) {
-                  projectMatch = item as Map<String, dynamic>;
-
-                  break;
-                }
-              }
-
-              if (projectMatch != null) {
-                summaryData = projectMatch;
-              } else {
-                if (data.isNotEmpty) {
-                  summaryData = data.first as Map<String, dynamic>;
-                  debugPrint(
-                      '⚠️ Using first item: ${summaryData['PROJECTNAME']}');
-                } else {
-                  setState(() {
-                    woValueController.text = 'No data available';
-                    _isLoading = false;
-                  });
-                  return;
-                }
-              }
-            }
-          } else {
-            // If Data is a map, use it directly
-            summaryData = data as Map<String, dynamic>;
-            debugPrint('📦 Data is a Map: $summaryData');
-          }
-
-          if (summaryData != null) {
-            SalesBillingSummaryModel summary =
-                SalesBillingSummaryModel.fromJson(summaryData);
-
-            setState(() {
-              _woValueInclGst = summary.woValueInclGst;
-              _woValueExclGst =
-                  summary.woValueInclGst / 1.18; // Assuming 18% GST
-
-              // ✅ Use your formatIndianNumber function here
-              final formattedValue =
-                  '₹ ${formatIndianNumber(summary.woValueInclGst)}';
-              debugPrint('✅ Formatted WO Value: $formattedValue');
-
-              woValueController.text = formattedValue;
-              _isLoading = false;
-            });
-          } else {
-            setState(() {
-              woValueController.text = 'No data available';
-              _isLoading = false;
-            });
-          }
-        } else {
-          debugPrint('⚠️ No data available in response');
           setState(() {
-            woValueController.text = 'No data available';
-            _isLoading = false;
+            _woValueInclGst = woValue;
+            _woValueExclGst = woValue / 1.18;
+            woValueController.text = '₹ ${formatIndianNumber(woValue)}';
           });
+        } else {
+          setState(() => woValueController.text = 'No data available');
         }
       } else {
-        // Handle error response
-        debugPrint('❌ API Error: ${response.statusCode} - ${response.body}');
-        setState(() {
-          woValueController.text = 'Error loading';
-          _isLoading = false;
-        });
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to load work order value'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        setState(() => woValueController.text = 'Error loading');
       }
     } catch (e) {
-      debugPrint('❌ Exception in fetchWorkOrderValue: $e');
-      setState(() {
-        woValueController.text = 'Error';
-        _isLoading = false;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      setState(() => woValueController.text = 'Error');
+      debugPrint('fetchWorkOrderValue error: $e');
+    } finally {
+      setState(() => _isLoading = false);
     }
   }
 

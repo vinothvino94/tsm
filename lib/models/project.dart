@@ -909,18 +909,42 @@ class SalesBillingModel {
   final String? billno;
   final DateTime? billdate;
   final String? billdesc;
+  final String? perofwork; // ← add
+  final double? workdoneamnt; // ← add
   final double? billamnt;
   final double? gstper;
   final double? gstamnt;
   final double? billtotamnt;
-  final double? itper;
-  final double? itamnt;
-  final double? retnper;
-  final double? retnamnt;
-  final double? dedamnt;
+  final double? tdsamnt; // ← add (was itamnt)
+  final double? tdscgstamnt; // ← add
+  final double? tdssgstamnt; // ← add
+  final double? secdepamnt; // ← add (was retnamnt)
+  final double? labcessamnt; // ← add
+  final double? mobintamnt; // ← add
+  final double? secadvamnt; // ← add
+  final String? secadvremks; // ← add (String)
+  final double? mobadvamnt; // ← add
+  final String? mobadvremks; // ← add
+  final double? othdedamnt; // ← add (was dedamnt)
+  final String? othdedremks; // ← add
   final double? whamnt;
+  final String? whremks; // ← add
+  final double? mobadvrecamnt; // ← add
+  final String? mobadvrecremks; // ← add
   final double? whrlseamnt;
-  final double? recamnt;
+  final String? whrlseremks; // ← add
+  final double? totdedamnt; // ← add
+  final double? netrecamnt; // ← add
+  final double? netrecdamnt; // ← add (was recamnt)
+  final DateTime? netrecddt;
+  final String? netrecdremks; // ← add
+  final double? outstandamnt; // ← add
+  final double? itper; // keep for backward compat
+  final double? itamnt; // keep for backward compat
+  final double? retnper; // keep for backward compat
+  final double? retnamnt; // keep for backward compat
+  final double? dedamnt; // keep for backward compat
+  final double? recamnt; // keep for backward compat
   final DateTime? recdate;
   final int? adduser;
   final DateTime? adddate;
@@ -928,9 +952,11 @@ class SalesBillingModel {
   final DateTime? editdate;
   final List<FileUploadModel>? files;
   final String? billfiles;
-  final String? sbfname; // Add this for existing files
-  final String? sbftype; // Add this for file types
-  final int? sbfcount; // Add this for file count
+  final String? sbfname;
+  final String? sbftype;
+  final int? sbfcount;
+
+  String? removedFiles;
 
   SalesBillingModel({
     required this.sbno,
@@ -940,17 +966,41 @@ class SalesBillingModel {
     this.billno,
     this.billdate,
     this.billdesc,
+    this.perofwork,
+    this.workdoneamnt,
     this.billamnt,
     this.gstper,
     this.gstamnt,
     this.billtotamnt,
+    this.tdsamnt,
+    this.tdscgstamnt,
+    this.tdssgstamnt,
+    this.secdepamnt,
+    this.labcessamnt,
+    this.mobintamnt,
+    this.secadvamnt,
+    this.secadvremks,
+    this.mobadvamnt,
+    this.mobadvremks,
+    this.othdedamnt,
+    this.othdedremks,
+    this.whamnt,
+    this.whremks,
+    this.mobadvrecamnt,
+    this.mobadvrecremks,
+    this.whrlseamnt,
+    this.whrlseremks,
+    this.totdedamnt,
+    this.netrecamnt,
+    this.netrecdamnt,
+    this.netrecddt,
+    this.netrecdremks,
+    this.outstandamnt,
     this.itper,
     this.itamnt,
     this.retnper,
     this.retnamnt,
     this.dedamnt,
-    this.whamnt,
-    this.whrlseamnt,
     this.recamnt,
     this.recdate,
     this.adduser,
@@ -962,6 +1012,7 @@ class SalesBillingModel {
     this.sbfname,
     this.sbftype,
     this.sbfcount,
+    this.removedFiles,
   });
 
   factory SalesBillingModel.fromJson(Map<String, dynamic> json) {
@@ -969,89 +1020,116 @@ class SalesBillingModel {
       sbno: json['SBNO'] ?? 0,
       cusid: json['CUSID'],
       projid: json['PROJID'],
-      stageid: json['STAGEID'],
+      stageid: json['STAGEIDNAME'] ?? json['STAGEID'],
       billno: json['BILLNO'],
-      billdate:
-          json['BILLDATE'] != null ? DateTime.parse(json['BILLDATE']) : null,
+      billdate: json['BILLDATE'] != null
+          ? DateTime.tryParse(json['BILLDATE'].toString())
+          : null,
       billdesc: json['BILLDESC'],
-      billamnt: json['BILLAMNT'] != null
-          ? double.tryParse(json['BILLAMNT'].toString())
+      perofwork: json['PEROFWORK'],
+      workdoneamnt: _toDouble(json['WORKDONEAMNT']),
+      billamnt: _toDouble(json['BILLAMNT']),
+      gstper: _toDouble(json['GSTPER']),
+      gstamnt: _toDouble(json['GSTAMNT']),
+      billtotamnt: _toDouble(json['TOTBILLAMNT']),
+      tdsamnt: _toDouble(json['TDSAMNT']),
+      tdscgstamnt: _toDouble(json['TDSCGSTAMNT']),
+      tdssgstamnt: _toDouble(json['TDSSGSTAMNT']),
+      secdepamnt: _toDouble(json['SECDEPAMNT']),
+      labcessamnt: _toDouble(json['LABCESSAMNT']),
+      mobintamnt: _toDouble(json['MOBINTAMNT']),
+      secadvamnt: _toDouble(json['SECADVAMNT']),
+      secadvremks: json['SECADVREMKS'],
+      mobadvamnt: _toDouble(json['MOBADVAMNT']),
+      mobadvremks: json['MOBADVREMKS'],
+      othdedamnt: _toDouble(json['OTHDEDAMNT']),
+      othdedremks: json['OTHDEDREMKS'],
+      whamnt: _toDouble(json['WHAMNT']),
+      whremks: json['WHREMKS'],
+      mobadvrecamnt: _toDouble(json['MOBADVRECAMNT']),
+      mobadvrecremks: json['MOBADVRECREMKS'],
+      whrlseamnt: _toDouble(json['WHRLSEAMNT']),
+      whrlseremks: json['WHRLSEREMKS'],
+      totdedamnt: _toDouble(json['TOTDEDAMNT']),
+      netrecamnt: _toDouble(json['NETRECAMNT']),
+      netrecddt: json['NETRECDDT'] != null
+          ? DateTime.tryParse(json['NETRECDDT'].toString())
           : null,
-      gstper: json['GSTPER'] != null
-          ? double.tryParse(json['GSTPER'].toString())
+      netrecdamnt: _toDouble(json['NETRECDAMNT']),
+      netrecdremks: json['NETRECDREMKS'],
+      outstandamnt: _toDouble(json['OUTSTANDAMNT']),
+      // backward compat
+      itper: _toDouble(json['ITPER'] ?? json['GSTPER']),
+      itamnt: _toDouble(json['ITAMNT'] ?? json['TDSAMNT']),
+      retnper: _toDouble(json['RETNPER']),
+      retnamnt: _toDouble(json['RETNAMNT'] ?? json['SECDEPAMNT']),
+      dedamnt: _toDouble(json['DEDAMNT'] ?? json['OTHDEDAMNT']),
+      recamnt: _toDouble(json['RECAMNT'] ?? json['NETRECDAMNT']),
+      recdate: json['RECDATE'] != null
+          ? DateTime.tryParse(json['RECDATE'].toString())
           : null,
-      gstamnt: json['GSTAMNT'] != null
-          ? double.tryParse(json['GSTAMNT'].toString())
+      adduser: json['ADDUSER'],
+      adddate: json['ADDDATE'] != null
+          ? DateTime.tryParse(json['ADDDATE'].toString())
           : null,
-      billtotamnt: json['BILLTOTAMNT'] != null
-          ? double.tryParse(json['BILLTOTAMNT'].toString())
-          : null,
-      itper: json['ITPER'] != null
-          ? double.tryParse(json['ITPER'].toString())
-          : null,
-      itamnt: json['ITAMNT'] != null
-          ? double.tryParse(json['ITAMNT'].toString())
-          : null,
-      retnper: json['RETNPER'] != null
-          ? double.tryParse(json['RETNPER'].toString())
-          : null,
-      retnamnt: json['RETNAMNT'] != null
-          ? double.tryParse(json['RETNAMNT'].toString())
-          : null,
-      dedamnt: json['DEDAMNT'] != null
-          ? double.tryParse(json['DEDAMNT'].toString())
-          : null,
-      whamnt: json['WHAMNT'] != null
-          ? double.tryParse(json['WHAMNT'].toString())
-          : null,
-      whrlseamnt: json['WHRLSEAMNT'] != null
-          ? double.tryParse(json['WHRLSEAMNT'].toString())
-          : null,
-      recamnt: json['RECAMNT'] != null
-          ? double.tryParse(json['RECAMNT'].toString())
+      edituser: json['EDITUSER'],
+      editdate: json['EDITDATE'] != null
+          ? DateTime.tryParse(json['EDITDATE'].toString())
           : null,
       billfiles: json['BILLFILES'],
       sbfname: json['SBFNAME'],
       sbftype: json['SBFTYPE'],
       sbfcount: json['SBFCOUNT'],
-      recdate: json['RECDATE'] != null ? DateTime.parse(json['RECDATE']) : null,
-      adduser: json['ADDUSER'],
-      adddate: json['ADDDATE'] != null ? DateTime.parse(json['ADDDATE']) : null,
-      edituser: json['EDITUSER'],
-      editdate:
-          json['EDITDATE'] != null ? DateTime.parse(json['EDITDATE']) : null,
     );
+  }
+
+  // ── Helper ───────────────────────────────────────────────────────────────
+  static double? _toDouble(dynamic v) {
+    if (v == null) return null;
+    return double.tryParse(v.toString());
   }
 
   Map<String, dynamic> toJson() => {
         'SBNO': sbno,
         'CUSID': cusid,
         'PROJID': projid,
-        'STAGEID': stageid,
+        'STAGEIDNAME': stageid,
         'BILLNO': billno,
         'BILLDATE': billdate?.toIso8601String(),
         'BILLDESC': billdesc,
+        'PEROFWORK': perofwork,
+        'WORKDONEAMNT': workdoneamnt,
         'BILLAMNT': billamnt,
         'GSTPER': gstper,
         'GSTAMNT': gstamnt,
-        'BILLTOTAMNT': billtotamnt,
-        'ITPER': itper,
-        'ITAMNT': itamnt,
-        'RETNPER': retnper,
-        'RETNAMNT': retnamnt,
-        'DEDAMNT': dedamnt,
+        'TOTBILLAMNT': billtotamnt,
+        'TDSAMNT': tdsamnt,
+        'TDSCGSTAMNT': tdscgstamnt,
+        'TDSSGSTAMNT': tdssgstamnt,
+        'SECDEPAMNT': secdepamnt,
+        'LABCESSAMNT': labcessamnt,
+        'MOBINTAMNT': mobintamnt,
+        'SECADVAMNT': secadvamnt,
+        'SECADVREMKS': secadvremks,
+        'MOBADVAMNT': mobadvamnt,
+        'MOBADVREMKS': mobadvremks,
+        'OTHDEDAMNT': othdedamnt,
+        'OTHDEDREMKS': othdedremks,
         'WHAMNT': whamnt,
+        'WHREMKS': whremks,
+        'MOBADVRECAMNT': mobadvrecamnt,
+        'MOBADVRECREMKS': mobadvrecremks,
         'WHRLSEAMNT': whrlseamnt,
-        'RECAMNT': recamnt,
-        'RECDATE': recdate?.toIso8601String(),
-        'ADDUSER': adduser,
-        'ADDDATE': adddate,
-        'EDITUSER': edituser,
-        'EDITDATE': editdate,
-        'FILES': files?.map((f) => f.toJson()).toList(),
+        'WHRLSEREMKS': whrlseremks,
+        'TOTDEDAMNT': totdedamnt,
+        'NETRECAMNT': netrecamnt,
+        'NETRECDAMNT': netrecdamnt,
+        'NETRECDREMKS': netrecdremks,
+        'OUTSTANDAMNT': outstandamnt,
         'SBFNAME': sbfname,
         'SBFTYPE': sbftype,
         'SBFCOUNT': sbfcount,
+        'REMOVEDFILES': removedFiles ?? '',
       };
 }
 
@@ -1546,4 +1624,26 @@ class NetAmountRecd {
       required this.remarks,
       required this.date,
       this.outstanding});
+}
+
+class BillingData {
+  final int? id;
+  final int customerId;
+  final int projectId;
+  final Map<String, String> rowData;
+
+  BillingData({
+    this.id,
+    required this.customerId,
+    required this.projectId,
+    required this.rowData,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'customerId': customerId,
+      'projectId': projectId,
+      'rowData': rowData,
+    };
+  }
 }
