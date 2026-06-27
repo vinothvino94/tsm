@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_pdfview/flutter_pdfview.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import 'package:pluto_grid/pluto_grid.dart';
 import 'package:tsm/screens/sales/view_design_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../api/api_utils.dart';
@@ -17,6 +18,8 @@ import '../../services/prefrence_helper.dart';
 import '../../widgets/crop_screen.dart';
 import 'package:universal_html/html.dart' as html;
 import 'package:path/path.dart' as path;
+
+import 'billing_entry_screen.dart';
 
 class DesignEntryScreen extends StatefulWidget {
   final bool isSuperAdmin;
@@ -75,6 +78,10 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
   List<String> _existingDesignFiles = [];
   List<String> _removedDesignFiles = [];
 
+  List<PlutoColumn> _salesGridColumns = [];
+  List<PlutoRow> _salesGridRows = [];
+  PlutoGridStateManager? _salesStateManager;
+
   @override
   void initState() {
     super.initState();
@@ -84,6 +91,7 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
     if (widget.designData != null) {
       _populateFormData();
     }
+    _initializeSalesGrid();
   }
 
   @override
@@ -294,196 +302,77 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
               ),
               const SizedBox(height: 16),
 
-              ///Sales Details
+              ///Sales Entries
+              ///Sales & Design Details (combined grid entry)
               Text(
-                'Sales Details',
+                'Sales & Design Details',
                 style: TextStyle(fontSize: 16, color: AppColors.primaryLight),
               ),
               const SizedBox(height: 16),
 
-              ///Sales Entries
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ///Ele Name - Dropdown
-                  Expanded(
-                    child: isViewOnly
-                        ? TextFormField(
-                            controller: elenameController,
-                            decoration: _inputDecoration("Name of Element"),
-                            readOnly: true,
-                            enabled: false,
-                          )
-                        : DropdownButtonFormField<ElementMasterModel?>(
-                            isExpanded: true,
-                            decoration: InputDecoration(
-                              hintText: "Select Element",
-                              border: const OutlineInputBorder(),
-                              contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 8),
-                              suffixIcon: selectedEleCode != null
-                                  ? IconButton(
-                                      icon: const Icon(Icons.clear, size: 18),
-                                      onPressed: () {
-                                        setState(() {
-                                          selectedEleCode = null;
-                                          selectedEleName = null;
-                                          elenameController.clear();
-                                          eleunitController.clear();
-                                          eletotalController.clear();
-                                        });
-                                      },
-                                      padding: EdgeInsets.zero,
-                                      tooltip: 'Clear selection',
-                                    )
-                                  : null,
-                            ),
-                            value: selectedEleCode != null &&
-                                    elementMasterList.isNotEmpty
-                                ? elementMasterList.firstWhere(
-                                    (e) => e.eleCode == selectedEleCode,
-                                    orElse: () => elementMasterList.first,
-                                  )
-                                : null,
-                            items: elementMasterList.map((element) {
-                              return DropdownMenuItem<ElementMasterModel>(
-                                value: element,
-                                child: Text(
-                                  element.eleName ?? '',
-                                  style: const TextStyle(fontSize: 14),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              );
-                            }).toList(),
-                            onChanged: (ElementMasterModel? selected) {
-                              if (selected != null) {
-                                setState(() {
-                                  selectedEleCode = selected.eleCode;
-                                  selectedEleName = selected.eleName;
-                                  elenameController.text =
-                                      selected.eleName ?? '';
-                                  eleunitController.text =
-                                      selected.eleUnit ?? '';
-                                });
-                              } else {
-                                setState(() {
-                                  selectedEleCode = null;
-                                  selectedEleName = null;
-                                  elenameController.clear();
-                                  eleunitController.clear();
-                                  eletotalController.clear();
-                                });
-                              }
-                            },
-                          ),
-                  ),
-                  const SizedBox(width: 16),
-
-                  ///Ele Unit - Dropdown (Auto-filled from Element Name)
-                  Expanded(
-                    child: isViewOnly
-                        ? TextFormField(
-                            controller: eleunitController,
-                            decoration: _inputDecoration("Element Unit"),
-                            readOnly: true,
-                            enabled: false,
-                          )
-                        : DropdownButtonFormField<String?>(
-                            isExpanded: true,
-                            decoration: InputDecoration(
-                              hintText: "Select Unit",
-                              border: const OutlineInputBorder(),
-                              contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 8),
-                              suffixIcon: eleunitController.text.isNotEmpty
-                                  ? IconButton(
-                                      icon: const Icon(Icons.clear, size: 18),
-                                      onPressed: () {
-                                        setState(() {
-                                          eleunitController.clear();
-                                        });
-                                      },
-                                      padding: EdgeInsets.zero,
-                                      tooltip: 'Clear value',
-                                    )
-                                  : null,
-                            ),
-                            value: eleunitController.text.isNotEmpty
-                                ? eleunitController.text
-                                : null,
-                            items: elementMasterList
-                                .map((element) => element.eleUnit)
-                                .where(
-                                    (unit) => unit != null && unit.isNotEmpty)
-                                .toSet()
-                                .map((unit) {
-                              return DropdownMenuItem<String>(
-                                value: unit,
-                                child: Text(
-                                  unit!,
-                                  style: const TextStyle(fontSize: 14),
-                                ),
-                              );
-                            }).toList(),
-                            onChanged: (String? selectedUnit) {
-                              if (selectedUnit != null) {
-                                setState(() {
-                                  eleunitController.text = selectedUnit;
-                                });
-                              }
-                            },
-                          ),
-                  ),
-                  const SizedBox(width: 16),
-
-                  ///Ele Total
-                  Expanded(
-                    child: TextFormField(
-                      controller: eletotalController,
-                      decoration: InputDecoration(
-                        labelText: "Element Total",
-                        hintText: "Element Total",
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
-                        suffixIcon:
-                            eletotalController.text.isNotEmpty && !isViewOnly
-                                ? IconButton(
-                                    icon: const Icon(Icons.clear, size: 18),
-                                    onPressed: () {
-                                      setState(() {
-                                        eletotalController.clear();
-                                      });
-                                    },
-                                    padding: EdgeInsets.zero,
-                                    tooltip: 'Clear value',
-                                  )
-                                : null,
-                      ),
-                      readOnly: isViewOnly,
-                      enabled: !isViewOnly,
+              if (!isViewOnly)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: ElevatedButton.icon(
+                    onPressed: _addSalesRow,
+                    icon: const Icon(Icons.add),
+                    label: const Text("Add Row"),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
                     ),
                   ),
-                  const SizedBox(width: 16),
-                ],
-              ),
-              const SizedBox(height: 16),
+                ),
+              const SizedBox(height: 8),
 
-              ///Add button
-              Align(
-                alignment: Alignment.centerRight,
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    _addSalesEntry();
+              Container(
+                height: 320,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: PlutoGrid(
+                  columns: _salesGridColumns,
+                  rows: _salesGridRows,
+                  onLoaded: (event) {
+                    _salesStateManager = event.stateManager;
+                    _salesStateManager!
+                        .setSelectingMode(PlutoGridSelectingMode.cell);
                   },
-                  icon: const Icon(Icons.add),
-                  label: const Text("Add"),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
+                  onChanged: (PlutoGridOnChangedEvent event) {
+                    try {
+                      // Update the local rows reference when changes occur
+                      if (_salesStateManager != null) {
+                        _salesGridRows = _salesStateManager!.rows;
+                      }
+                      if (mounted) {
+                        setState(() {});
+                      }
+                    } catch (e) {
+                      debugPrint('Error in onChanged: $e');
+                    }
+                  },
+                  configuration: PlutoGridConfiguration(
+                    style: PlutoGridStyleConfig(
+                      rowHeight: 45,
+                      columnHeight: 50,
+                      gridBorderRadius: BorderRadius.circular(8),
+                    ),
+                    scrollbar:
+                        const PlutoGridScrollbarConfig(isAlwaysShown: true),
+                  ),
+                  noRowsWidget: Center(
+                    child: Text(
+                      isViewOnly
+                          ? 'No entries available'
+                          : 'Click "Add Row" to start entering data',
+                      style: TextStyle(color: Colors.grey.shade600),
+                    ),
                   ),
                 ),
               ),
+              const SizedBox(height: 16),
 
               // 🔹 TABLE VIEW
               isAndroid
@@ -492,79 +381,6 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
                       child: _buildSalesEntriesTable(),
                     )
                   : _buildSalesEntriesTable(),
-              const SizedBox(height: 16),
-
-              ///Design Details
-              Text(
-                'Design Details',
-                style: TextStyle(fontSize: 16, color: AppColors.primaryLight),
-              ),
-              const SizedBox(height: 16),
-
-              ///Design Entries Row
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ///Ele Total (Design Total)
-                  Expanded(
-                    child: TextFormField(
-                      controller: deletotalController,
-                      decoration: InputDecoration(
-                        labelText: "Design Total",
-                        hintText: "Design Total",
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
-                        suffixIcon:
-                            deletotalController.text.isNotEmpty && !isViewOnly
-                                ? IconButton(
-                                    icon: const Icon(Icons.clear, size: 18),
-                                    onPressed: () {
-                                      setState(() {
-                                        deletotalController.clear();
-                                      });
-                                    },
-                                    padding: EdgeInsets.zero,
-                                    tooltip: 'Clear value',
-                                  )
-                                : null,
-                      ),
-                      readOnly: isViewOnly,
-                      enabled: !isViewOnly,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-
-                  ///Ele Remarks
-                  Expanded(
-                    child: TextFormField(
-                      controller: delermksController,
-                      decoration: InputDecoration(
-                        labelText: "Element Remarks",
-                        hintText: "Element Remarks",
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
-                        suffixIcon:
-                            delermksController.text.isNotEmpty && !isViewOnly
-                                ? IconButton(
-                                    icon: const Icon(Icons.clear, size: 18),
-                                    onPressed: () {
-                                      setState(() {
-                                        delermksController.clear();
-                                      });
-                                    },
-                                    padding: EdgeInsets.zero,
-                                    tooltip: 'Clear value',
-                                  )
-                                : null,
-                      ),
-                      readOnly: isViewOnly,
-                      enabled: !isViewOnly,
-                    ),
-                  ),
-                ],
-              ),
               const SizedBox(height: 16),
 
               ///Document Upload Section
@@ -1597,464 +1413,31 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
       return const SizedBox.shrink();
     }
 
-    const double headerFs = 13;
-    const double cellFs = 13;
-
-    // ✅ Calculate totals
-    double totalSales = 0;
-    double totalDesign = 0;
-
-    for (var entry in _salesEntries) {
-      totalSales += double.tryParse(entry.totalQty.replaceAll(',', '')) ?? 0;
-      totalDesign +=
-          double.tryParse(entry.designTotal.replaceAll(',', '')) ?? 0;
-    }
-
-    return Card(
-      elevation: 0,
-      margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey.shade200),
+    return Container(
+      height: 300,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade300),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
-            columnSpacing: 20,
-            horizontalMargin: 16,
-            headingRowHeight: 46,
-            dataRowMinHeight: 50,
-            dataRowMaxHeight: 54,
-            headingRowColor: WidgetStateProperty.all(const Color(0xFFF8FAFC)),
-            columns: [
-              DataColumn(
-                label: SizedBox(
-                  width: 36,
-                  child: Text('S.No',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: headerFs,
-                          color: const Color(0xFF1E293B))),
-                ),
-              ),
-              DataColumn(
-                label: Text('Element Name',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: headerFs,
-                        color: const Color(0xFF1E293B))),
-              ),
-              DataColumn(
-                label: Text('Unit',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: headerFs,
-                        color: const Color(0xFF1E293B))),
-              ),
-              DataColumn(
-                label: Text('Sales Qnty',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: headerFs,
-                        color: const Color(0xFF1E293B))),
-                numeric: true,
-              ),
-              DataColumn(
-                label: Text('Design Qnty',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: headerFs,
-                        color: const Color(0xFF1E293B))),
-                numeric: true,
-              ),
-              DataColumn(
-                label: Text('Remarks',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: headerFs,
-                        color: const Color(0xFF1E293B))),
-              ),
-              DataColumn(
-                label: SizedBox(
-                  width: 80,
-                  child: Text('Actions',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: headerFs,
-                          color: const Color(0xFF1E293B))),
-                ),
-              ),
-            ],
-            rows: [
-              // ── Data Rows ──
-              ...List.generate(
-                _salesEntries.length,
-                (index) {
-                  final entry = _salesEntries[index];
-                  return DataRow(
-                    color: WidgetStateProperty.all(
-                      index % 2 == 0 ? Colors.white : const Color(0xFFFAFBFD),
-                    ),
-                    cells: [
-                      // S.No badge
-                      DataCell(
-                        Container(
-                          width: 26,
-                          height: 26,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFEFF3FA),
-                            borderRadius: BorderRadius.circular(7),
-                          ),
-                          child: Text(
-                            '${index + 1}',
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.grey.shade600,
-                            ),
-                          ),
-                        ),
-                      ),
-                      // Element name
-                      DataCell(
-                        Text(
-                          entry.elementName,
-                          style: TextStyle(
-                              fontSize: cellFs,
-                              fontWeight: FontWeight.w500,
-                              color: const Color(0xFF334155)),
-                        ),
-                      ),
-                      // Unit as a small tag
-                      DataCell(
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 9, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFEFF3FA),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            entry.unit,
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.primary,
-                            ),
-                          ),
-                        ),
-                      ),
-                      // Sales Total
-                      DataCell(
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: Text(
-                            entry.totalQty,
-                            style: TextStyle(
-                              fontSize: cellFs,
-                              fontWeight: FontWeight.w600,
-                              color: const Color(0xFF1E293B),
-                              fontFeatures: const [
-                                FontFeature.tabularFigures()
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      // Design Total
-                      DataCell(
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: Text(
-                            entry.designTotal,
-                            style: TextStyle(
-                              fontSize: cellFs,
-                              fontWeight: FontWeight.w600,
-                              color: const Color(0xFF1E293B),
-                              fontFeatures: const [
-                                FontFeature.tabularFigures()
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      // Remarks cell
-                      DataCell(
-                        Text(
-                          entry.dremarks ?? '',
-                          style: TextStyle(
-                            fontSize: cellFs,
-                            fontWeight: FontWeight.w400,
-                            color: const Color(0xFF64748B),
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      // Actions
-                      DataCell(
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            _ActionIconButton(
-                              icon: Icons.edit_outlined,
-                              color: const Color(0xFF2563EB),
-                              tooltip: 'Edit',
-                              onPressed: () {
-                                // Set the values in the controllers
-                                elenameController.text = entry.elementName;
-                                eleunitController.text = entry.unit;
-                                eletotalController.text = entry.totalQty;
-                                deletotalController.text = entry.designTotal;
-                                delermksController.text = entry.dremarks ?? '';
-
-                                // Find and set the selected element
-                                final selectedElement =
-                                    elementMasterList.firstWhere(
-                                  (e) => e.eleName == entry.elementName,
-                                  orElse: () => elementMasterList.first,
-                                );
-
-                                setState(() {
-                                  selectedEleCode = selectedElement.eleCode;
-                                  selectedEleName = selectedElement.eleName;
-                                  _salesEntries.removeAt(index);
-                                });
-
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                        "Edit the entry and click Add to update"),
-                                    backgroundColor: Colors.orange,
-                                    duration: Duration(seconds: 2),
-                                  ),
-                                );
-                              },
-                            ),
-                            const SizedBox(width: 6),
-                            _ActionIconButton(
-                              icon: Icons.delete_outline,
-                              color: const Color(0xFFDC2626),
-                              tooltip: 'Delete',
-                              onPressed: () {
-                                setState(() {
-                                  _salesEntries.removeAt(index);
-                                });
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content:
-                                        Text("Deleted: ${entry.elementName}"),
-                                    backgroundColor: Colors.red,
-                                    duration: const Duration(seconds: 1),
-                                  ),
-                                );
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-
-              // ── ✅ TOTAL ROW ──
-              DataRow(
-                color: WidgetStateProperty.all(
-                  Colors.indigo.shade50.withOpacity(0.6),
-                ),
-                cells: [
-                  // Empty S.No
-                  DataCell(
-                    Container(
-                      width: 26,
-                      height: 26,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: Colors.indigo.shade100,
-                        borderRadius: BorderRadius.circular(7),
-                      ),
-                      child: Icon(
-                        Icons.summarize,
-                        size: 16,
-                        color: Colors.indigo.shade700,
-                      ),
-                    ),
-                  ),
-                  // "TOTAL" label
-                  DataCell(
-                    Text(
-                      'TOTAL',
-                      style: TextStyle(
-                        fontSize: cellFs + 1,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.indigo.shade800,
-                      ),
-                    ),
-                  ),
-                  // Empty Unit cell
-                  DataCell(
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 9, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.indigo.shade100,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        '—',
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.indigo.shade600,
-                        ),
-                      ),
-                    ),
-                  ),
-                  // ✅ Total Sales
-                  DataCell(
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: Text(
-                        totalSales.toStringAsFixed(0),
-                        style: TextStyle(
-                          fontSize: cellFs + 1,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.indigo.shade800,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ),
-                  ),
-                  // ✅ Total Design
-                  DataCell(
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: Text(
-                        totalDesign.toStringAsFixed(0),
-                        style: TextStyle(
-                          fontSize: cellFs + 1,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.indigo.shade800,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ),
-                  ),
-                  // Empty Remarks
-                  DataCell(
-                    Text(
-                      '',
-                      style: TextStyle(
-                        fontSize: cellFs,
-                        fontWeight: FontWeight.w400,
-                        color: const Color(0xFF64748B),
-                      ),
-                    ),
-                  ),
-                  // Empty Actions
-                  DataCell(
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const SizedBox(width: 20),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
+      child: PlutoGrid(
+        columns: _salesGridColumns,
+        rows: _salesGridRows,
+        onLoaded: (event) {
+          _salesStateManager = event.stateManager;
+          _salesStateManager!.setSelectingMode(PlutoGridSelectingMode.none);
+          if (_salesGridRows.isNotEmpty && _salesStateManager!.rows.isEmpty) {
+            _salesStateManager!.appendRows(_salesGridRows);
+          }
+        },
+        configuration: PlutoGridConfiguration(
+          style: PlutoGridStyleConfig(
+            rowHeight: 45,
+            columnHeight: 50,
+            gridBorderRadius: BorderRadius.circular(8),
           ),
+          scrollbar: const PlutoGridScrollbarConfig(isAlwaysShown: true),
         ),
-      ),
-    );
-  }
-
-  void _addSalesEntry() {
-    final elementName = elenameController.text.trim();
-    final unit = eleunitController.text.trim();
-    final totalQty = eletotalController.text.trim(); // Sales Total
-    final designTotal = deletotalController.text.trim(); // Design Total
-    final designRemarks = delermksController.text.trim();
-
-    // Validation
-    if (elementName.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Please select an Element Name"),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    if (unit.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Please select Element Unit"),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    if (totalQty.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Please enter Sales Total"),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    // Check if entry already exists
-    final exists = _salesEntries
-        .any((e) => e.elementName.toLowerCase() == elementName.toLowerCase());
-
-    if (exists) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("This element already exists! Use Edit to modify."),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
-    // Add new entry
-    setState(() {
-      _salesEntries.add(SalesEntryModel(
-        elementName: elementName,
-        unit: unit,
-        totalQty: totalQty,
-        designTotal: designTotal, // ✅ Make sure this is set
-        dremarks: designRemarks, // ✅ Make sure this is set
-      ));
-
-      // Clear ALL fields
-      elenameController.clear();
-      eleunitController.clear();
-      eletotalController.clear();
-      deletotalController.clear();
-      delermksController.clear();
-
-      selectedEleCode = null;
-      selectedEleName = null;
-      _hasAttemptedSubmit = true;
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text("Added: $elementName"),
-        backgroundColor: Colors.green,
-        duration: const Duration(seconds: 1),
       ),
     );
   }
@@ -2078,6 +1461,269 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
       return [];
     } catch (e) {
       return [];
+    }
+  }
+
+  void _initializeSalesGrid() {
+    _salesGridColumns = [
+      PlutoColumn(
+        title: 'S.No',
+        field: 'sno',
+        type: PlutoColumnType.text(),
+        readOnly: true,
+        enableEditingMode: false,
+        width: 70,
+        backgroundColor: const Color(0xFFF1F5F9),
+        renderer: (ctx) => Align(
+          alignment: Alignment.center,
+          child: Text(
+            ctx.cell.value.toString(),
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+          ),
+        ),
+      ),
+      PlutoColumn(
+        title: 'Element Name',
+        field: 'elementName',
+        type: PlutoColumnType.select(
+          [
+            '',
+            ...elementMasterList.map((e) => e.eleName ?? '').toList(),
+          ],
+        ),
+        width: 180,
+        enableEditingMode: !widget.isReadOnly!,
+        readOnly: widget.isReadOnly == true,
+      ),
+      PlutoColumn(
+        title: 'Unit',
+        field: 'unit',
+        type: PlutoColumnType.text(),
+        readOnly: true,
+        enableEditingMode: false,
+        width: 100,
+        backgroundColor: const Color(0xFFF1F5F9),
+        renderer: (ctx) => Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            ctx.cell.value.toString(),
+            style: const TextStyle(fontSize: 13),
+          ),
+        ),
+      ),
+      PlutoColumn(
+        title: 'Sales Qnty',
+        field: 'totalQty',
+        type: PlutoColumnType.number(format: '#,###'),
+        readOnly: true,
+        enableEditingMode: false,
+        width: 130,
+        backgroundColor: const Color(0xFFF1F5F9),
+        renderer: (ctx) => Align(
+          alignment: Alignment.centerRight,
+          child: Text(
+            ctx.cell.value == null || ctx.cell.value == 0
+                ? ''
+                : formatIndianNumber((ctx.cell.value as num).toDouble()),
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Colors.indigo.shade700,
+            ),
+          ),
+        ),
+        footerRenderer: (rendererContext) {
+          return PlutoAggregateColumnFooter(
+            rendererContext: rendererContext,
+            type: PlutoAggregateColumnType.sum,
+            format: '#,###',
+            alignment: Alignment.centerRight,
+            titleSpanBuilder: (text) => [
+              TextSpan(
+                text: text,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.indigo.shade900,
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+      PlutoColumn(
+        title: 'Design Qnty',
+        field: 'designTotal',
+        type: PlutoColumnType.number(format: '#,###'),
+        readOnly: true,
+        enableEditingMode: false,
+        width: 130,
+        backgroundColor: const Color(0xFFF1F5F9),
+        renderer: (ctx) => Align(
+          alignment: Alignment.centerRight,
+          child: Text(
+            ctx.cell.value == null || ctx.cell.value == 0
+                ? ''
+                : formatIndianNumber((ctx.cell.value as num).toDouble()),
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Colors.indigo.shade700,
+            ),
+          ),
+        ),
+        footerRenderer: (rendererContext) {
+          return PlutoAggregateColumnFooter(
+            rendererContext: rendererContext,
+            type: PlutoAggregateColumnType.sum,
+            format: '#,###',
+            alignment: Alignment.centerRight,
+            titleSpanBuilder: (text) => [
+              TextSpan(
+                text: text,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.indigo.shade900,
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+      PlutoColumn(
+        title: 'Remarks',
+        field: 'remarks',
+        type: PlutoColumnType.text(),
+        readOnly: true,
+        enableEditingMode: false,
+        width: 160,
+        renderer: (ctx) => Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            ctx.cell.value.toString(),
+            style: const TextStyle(fontSize: 13),
+          ),
+        ),
+      ),
+      PlutoColumn(
+        title: 'Actions',
+        field: 'actions',
+        type: PlutoColumnType.text(),
+        readOnly: true,
+        enableEditingMode: false,
+        width: 100,
+        renderer: (ctx) {
+          final index = ctx.rowIdx;
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              InkWell(
+                onTap: () => _editSalesEntry(index),
+                child: const Icon(Icons.edit_outlined,
+                    size: 18, color: Color(0xFF2563EB)),
+              ),
+              const SizedBox(width: 10),
+              InkWell(
+                onTap: () => _deleteSalesEntry(index),
+                child: const Icon(Icons.delete_outline,
+                    size: 18, color: Color(0xFFDC2626)),
+              ),
+            ],
+          );
+        },
+      ),
+    ];
+  }
+
+  void _rebuildSalesGridRows() {
+    _salesGridRows = _salesEntries.asMap().entries.map((entry) {
+      final index = entry.key;
+      final e = entry.value;
+      return PlutoRow(cells: {
+        'sno': PlutoCell(value: '${index + 1}'),
+        'elementName': PlutoCell(value: e.elementName),
+        'unit': PlutoCell(value: e.unit),
+        'totalQty': PlutoCell(
+            value: double.tryParse(e.totalQty.replaceAll(',', '')) ?? 0),
+        'designTotal': PlutoCell(
+            value: double.tryParse(e.designTotal.replaceAll(',', '')) ?? 0),
+        'remarks': PlutoCell(value: e.dremarks ?? ''),
+        'actions': PlutoCell(value: ''),
+      });
+    }).toList();
+
+    if (_salesStateManager != null) {
+      _salesStateManager!.removeAllRows();
+      _salesStateManager!.appendRows(_salesGridRows);
+    }
+  }
+
+  void _editSalesEntry(int index) {
+    final entry = _salesEntries[index];
+    elenameController.text = entry.elementName;
+    eleunitController.text = entry.unit;
+    eletotalController.text = entry.totalQty;
+    deletotalController.text = entry.designTotal;
+    delermksController.text = entry.dremarks ?? '';
+
+    final selectedElement = elementMasterList.firstWhere(
+      (e) => e.eleName == entry.elementName,
+      orElse: () => elementMasterList.first,
+    );
+
+    setState(() {
+      selectedEleCode = selectedElement.eleCode;
+      selectedEleName = selectedElement.eleName;
+      _salesEntries.removeAt(index);
+      _rebuildSalesGridRows();
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("Edit the entry and click Add to update"),
+        backgroundColor: Colors.orange,
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _deleteSalesEntry(int index) {
+    final entry = _salesEntries[index];
+    setState(() {
+      _salesEntries.removeAt(index);
+      _rebuildSalesGridRows();
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("Deleted: ${entry.elementName}"),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 1),
+      ),
+    );
+  }
+
+  void _addSalesRow() {
+    final defaultName = elementMasterList.isNotEmpty
+        ? (elementMasterList.first.eleName ?? '')
+        : '';
+    final defaultUnit = elementMasterList.isNotEmpty
+        ? (elementMasterList.first.eleUnit ?? '')
+        : '';
+
+    final newRow = PlutoRow(cells: {
+      'elementName': PlutoCell(value: defaultName),
+      'unit': PlutoCell(value: defaultUnit),
+      'totalQty': PlutoCell(value: 0),
+      'designTotal': PlutoCell(value: 0),
+      'remarks': PlutoCell(value: ''),
+      'actions': PlutoCell(value: ''),
+    });
+
+    if (_salesStateManager != null) {
+      _salesStateManager!.appendRows([newRow]);
+      setState(() => _salesGridRows = _salesStateManager!.rows);
     }
   }
 }
@@ -2164,3 +1810,92 @@ class _ActionIconButton extends StatelessWidget {
     );
   }
 }
+
+/*///Add button
+              Align(
+                alignment: Alignment.centerRight,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    _addSalesEntry();
+                  },
+                  icon: const Icon(Icons.add),
+                  label: const Text("Add"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ),*/
+
+/*///Design Details
+              Text(
+                'Design Details',
+                style: TextStyle(fontSize: 16, color: AppColors.primaryLight),
+              ),
+              const SizedBox(height: 16),
+
+              ///Design Entries Row
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ///Ele Total (Design Total)
+                  Expanded(
+                    child: TextFormField(
+                      controller: deletotalController,
+                      decoration: InputDecoration(
+                        labelText: "Design Total",
+                        hintText: "Design Total",
+                        border: const OutlineInputBorder(),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 14),
+                        suffixIcon:
+                            deletotalController.text.isNotEmpty && !isViewOnly
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear, size: 18),
+                                    onPressed: () {
+                                      setState(() {
+                                        deletotalController.clear();
+                                      });
+                                    },
+                                    padding: EdgeInsets.zero,
+                                    tooltip: 'Clear value',
+                                  )
+                                : null,
+                      ),
+                      readOnly: isViewOnly,
+                      enabled: !isViewOnly,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+
+                  ///Ele Remarks
+                  Expanded(
+                    child: TextFormField(
+                      controller: delermksController,
+                      decoration: InputDecoration(
+                        labelText: "Element Remarks",
+                        hintText: "Element Remarks",
+                        border: const OutlineInputBorder(),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 14),
+                        suffixIcon:
+                            delermksController.text.isNotEmpty && !isViewOnly
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear, size: 18),
+                                    onPressed: () {
+                                      setState(() {
+                                        delermksController.clear();
+                                      });
+                                    },
+                                    padding: EdgeInsets.zero,
+                                    tooltip: 'Clear value',
+                                  )
+                                : null,
+                      ),
+                      readOnly: isViewOnly,
+                      enabled: !isViewOnly,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),*/

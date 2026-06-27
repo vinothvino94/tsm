@@ -3572,14 +3572,14 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
         if (selectedCustomerId != null && selectedProjectId != null) {
           await loadStagesFromApi(selectedCustomerId!, selectedProjectId!)
               .then((_) {
-            if (data.stageid != null &&
-                dynamicStages.containsKey(data.stageid)) {
+            if (data.stageidname != null &&
+                dynamicStages.containsKey(data.stageidname)) {
               setState(() {
-                selectedstageId = data.stageid;
-                stageController.text = dynamicStages[data.stageid] ?? '';
+                selectedstageId = data.stageidname;
+                stageController.text = dynamicStages[data.stageidname] ?? '';
               });
-            } else if (data.stageid != null) {
-              stageController.text = data.stageid ?? '';
+            } else if (data.stageidname != null) {
+              stageController.text = data.stageidname ?? '';
               selectedstageId = null;
             }
           });

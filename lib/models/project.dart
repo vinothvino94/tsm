@@ -905,7 +905,7 @@ class SalesBillingModel {
   final int sbno;
   final int? cusid;
   final int? projid;
-  final String? stageid;
+  final String? stageidname;
   final String? billno;
   final DateTime? billdate;
   final String? billdesc;
@@ -962,7 +962,7 @@ class SalesBillingModel {
     required this.sbno,
     this.cusid,
     this.projid,
-    this.stageid,
+    this.stageidname,
     this.billno,
     this.billdate,
     this.billdesc,
@@ -1020,7 +1020,7 @@ class SalesBillingModel {
       sbno: json['SBNO'] ?? 0,
       cusid: json['CUSID'],
       projid: json['PROJID'],
-      stageid: json['STAGEIDNAME'] ?? json['STAGEID'],
+      stageidname: json['STAGEIDNAME'] ?? json['STAGEID'],
       billno: json['BILLNO'],
       billdate: json['BILLDATE'] != null
           ? DateTime.tryParse(json['BILLDATE'].toString())
@@ -1093,7 +1093,7 @@ class SalesBillingModel {
         'SBNO': sbno,
         'CUSID': cusid,
         'PROJID': projid,
-        'STAGEIDNAME': stageid,
+        'STAGEIDNAME': stageidname,
         'BILLNO': billno,
         'BILLDATE': billdate?.toIso8601String(),
         'BILLDESC': billdesc,
@@ -1156,7 +1156,7 @@ class SalesBillingSummaryModel {
     required this.balanceAmnt,
   });
 
-  factory SalesBillingSummaryModel.fromJson(Map<String, dynamic> json) {
+  /*factory SalesBillingSummaryModel.fromJson(Map<String, dynamic> json) {
     // Debug: Print the entire JSON to see what's coming from API
     debugPrint('===== SalesBillingSummaryModel.fromJson =====');
     debugPrint('Full JSON: $json');
@@ -1201,6 +1201,43 @@ class SalesBillingSummaryModel {
       customerId: extractCustomerId(customerName),
       projectId: extractProjectId(projectName),
       projectCode: projectCode, // ✅ Use the extracted project code
+      customerName: customerName,
+      projectName: projectName,
+      woValueInclGst: (json['WOVALUEINCLGST'] ?? 0).toDouble(),
+      billed: (json['BILLEDAMOUNT'] ?? 0).toDouble(),
+      recamnt: json['RECEIVED'] != null
+          ? (json['RECEIVED'] as num).toDouble()
+          : null,
+      balanceAmnt: (json['BALANCEAMNT'] ?? 0).toDouble(),
+    );
+  }*/
+  factory SalesBillingSummaryModel.fromJson(Map<String, dynamic> json) {
+    debugPrint('===== SalesBillingSummaryModel.fromJson =====');
+    debugPrint('Full JSON: $json');
+
+    String projectName = json['PROJECTNAME']?.toString() ?? '';
+    String customerName = json['CUSTOMERNAME']?.toString() ?? '';
+
+    String? projectCode;
+    if (json['PROJECTCODE'] != null) {
+      projectCode = json['PROJECTCODE'].toString();
+    }
+
+    // ✅ Read CUSTOMERID and PROJECTID directly from JSON — no regex needed
+    int? customerId;
+    if (json['CUSTOMERID'] != null) {
+      customerId = int.tryParse(json['CUSTOMERID'].toString());
+    }
+
+    int? projectId;
+    if (json['PROJECTID'] != null) {
+      projectId = int.tryParse(json['PROJECTID'].toString());
+    }
+
+    return SalesBillingSummaryModel(
+      customerId: customerId,
+      projectId: projectId,
+      projectCode: projectCode,
       customerName: customerName,
       projectName: projectName,
       woValueInclGst: (json['WOVALUEINCLGST'] ?? 0).toDouble(),

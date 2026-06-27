@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:csv/csv.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -13,6 +14,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'package:pluto_grid/pluto_grid.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:tsm/screens/sales/view_billing_screen.dart';
 
 import '../../api/api_utils.dart';
@@ -21,16 +23,30 @@ import '../../models/project.dart';
 import '../../services/prefrence_helper.dart';
 import 'billing_entry_screen.dart';
 
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:path_provider/path_provider.dart';
+
+import 'dart:io';
+
 class DataEntryScreen extends StatefulWidget {
   final bool isSuperAdmin;
   final bool? isReadOnly;
   final VoidCallback? onDataSaved;
+  final int? initialCustomerId;
+  final int? initialProjectId;
+  final String? initialCustomerName;
+  final String? initialProjectName;
 
   const DataEntryScreen({
     super.key,
     this.isSuperAdmin = false,
     this.isReadOnly = false,
     this.onDataSaved,
+    this.initialCustomerId,
+    this.initialProjectId,
+    this.initialCustomerName,
+    this.initialProjectName,
   });
 
   @override
@@ -122,16 +138,36 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
       'title': 'Net Amount Received',
     },
   };
+  final Set<String> _existingRowKeys = {};
 
   List<SalesBillingModel> _billingList = [];
   bool _isLoadingBilling = false;
+  bool _showDownloadButton = true;
+  SalesBillingSummaryModel? _billingSummary;
 
   @override
   void initState() {
     super.initState();
+    initializeGrid(isViewOnly: widget.isReadOnly == true);
     initializeGrid();
     loadCustomers();
     _loadUserDetails();
+    if (widget.initialCustomerId != null && widget.initialProjectId != null) {
+      selectedCustomerId = widget.initialCustomerId;
+      selectedProjectId = widget.initialProjectId;
+      customerController.text = widget.initialCustomerName ?? '';
+      siteController.text = widget.initialProjectName ?? '';
+
+      fetchWorkOrderValue(widget.initialCustomerId!, widget.initialProjectId!);
+      _fetchBillingSummaryForProject(widget.initialProjectId!);
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _loadBillingDataForProject(
+          widget.initialCustomerId!,
+          widget.initialProjectId!,
+        ); // ← uses the working endpoint
+      });
+    }
   }
 
   @override
@@ -144,37 +180,42 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
       appBar: AppBar(
         title: const Text('Billing Update'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            tooltip: 'Add Row',
-            onPressed: () {
-              // Check if customer and project are selected
-              if (selectedCustomerId == null || selectedProjectId == null) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Please select Customer and Site first.'),
-                    backgroundColor: Colors.orange,
-                  ),
-                );
-                return;
-              }
-              addNewRow();
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.list_alt),
-            tooltip: 'View Billing List',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ViewBillingScreen(
-                    isSuperAdmin: widget.isSuperAdmin,
-                  ),
-                ),
-              );
-            },
-          ),
+          if (!isViewOnly)
+            IconButton(
+              icon: const Icon(Icons.add),
+              tooltip: 'Add Row',
+              onPressed: () {
+                // Check if customer and project are selected
+                if (selectedCustomerId == null || selectedProjectId == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please select Customer and Site first.'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                  return;
+                }
+                addNewRow();
+                setState(() => _showDownloadButton = false);
+              },
+            ),
+          if (_showDownloadButton)
+            IconButton(
+              icon: const Icon(Icons.download),
+              tooltip: 'Download Billing Data',
+              onPressed: () {
+                if (selectedCustomerId == null || selectedProjectId == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please select Customer and Site first.'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                  return;
+                }
+                _downloadBillingData();
+              },
+            ),
         ],
       ),
       body: Form(
@@ -305,6 +346,8 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
                               if (selectedCustomerId != null) {
                                 fetchWorkOrderValue(
                                     selectedCustomerId!, selection.projectId);
+                                _fetchBillingSummaryForProject(
+                                    selection.projectId);
                               }
                               setState(() {
                                 selectedProjectId = selection.projectId;
@@ -367,13 +410,13 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'WO Value:',
+                      'Work Order Value:',
                       style: TextStyle(
                         fontSize: 16,
                         color: AppColors.primaryLight,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(width: 8),
                     if (_isLoading)
                       const SizedBox(
                         height: 20,
@@ -382,41 +425,73 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
                           strokeWidth: 2,
                         ),
                       )
+                    else if (woValueController.text.isEmpty)
+                      Text(
+                        'Select project to fetch',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey.shade500,
+                        ),
+                      )
+                    else if (woValueController.text.contains('Error') ||
+                        woValueController.text == 'No data available')
+                      Text(
+                        woValueController.text,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.red,
+                        ),
+                      )
                     else
-                      Row(
+                      // ── Inline Excl/Incl GST values — no click needed ──────────
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           Text(
-                            woValueController.text.isEmpty
-                                ? 'Select project to fetch'
-                                : woValueController.text,
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color: woValueController.text.contains('Error') ||
-                                      woValueController.text ==
-                                          'No data available'
-                                  ? Colors.red
-                                  : woValueController.text.isEmpty
-                                      ? Colors.grey.shade500
-                                      : Colors.blue.shade700,
+                            '₹ ${formatIndianNumber(_woValueExclGst ?? 0)} (Excl. GST 18%)',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Colors.blue,
                             ),
                           ),
-                          if (woValueController.text.isNotEmpty &&
-                              woValueController.text != 'No data available' &&
-                              woValueController.text != 'Error loading' &&
-                              woValueController.text != 'Error' &&
-                              woValueController.text != 'Loading...')
-                            IconButton(
-                              icon: const Icon(Icons.info_outline, size: 18),
-                              onPressed: () {
-                                if (_woValueInclGst != null) {
-                                  _showWODetailsDialog(context);
-                                }
-                              },
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                              tooltip: 'View details',
+                          const SizedBox(width: 10),
+                          Text(
+                            '₹ ${formatIndianNumber(_woValueInclGst ?? 0)} (Incl. GST 18%)',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue,
                             ),
+                          ),
+                          const SizedBox(width: 10),
+                          Builder(
+                            builder: (context) {
+                              // ── Sum "Work Done value" across all rows ──────────────────
+                              final totalWorkDone =
+                                  (stateManager?.rows ?? []).fold<double>(
+                                0.0,
+                                (sum, row) {
+                                  final v = row.cells[_fWorkDone]?.value;
+                                  return sum +
+                                      (double.tryParse(v?.toString() ?? '0') ??
+                                          0.0);
+                                },
+                              );
+                              final toBeBilled =
+                                  (_woValueInclGst ?? 0.0) - totalWorkDone;
+
+                              return Text(
+                                'To be billed: ₹ ${formatIndianNumber(toBeBilled < 0 ? 0 : toBeBilled)}',
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.green,
+                                ),
+                              );
+                            },
+                          ),
                         ],
                       ),
                   ],
@@ -435,22 +510,78 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
                   rows: rows,
                   onLoaded: (PlutoGridOnLoadedEvent event) {
                     stateManager = event.stateManager;
-                    stateManager!.setShowColumnFilter(true);
-                    // ← if rows were added before onLoaded fired, sync them
+
+                    stateManager!.setSelectingMode(PlutoGridSelectingMode.cell);
                     if (rows.isNotEmpty && stateManager!.rows.isEmpty) {
                       stateManager!.appendRows(rows);
                     }
+
+                    // ✅ Numpad key support
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      stateManager!.keyManager?.subject.listen((keyEvent) {
+                        final key = keyEvent.event;
+                        print(
+                            'Key pressed: ${key.runtimeType} - ${key is RawKeyDownEvent ? (key as RawKeyDownEvent).logicalKey : 'not raw'}');
+                        if (key is! RawKeyDownEvent) return;
+                        if (stateManager == null) return;
+                        if (stateManager!.isEditing)
+                          return; // already editing, skip
+
+                        final numpadKeys = {
+                          LogicalKeyboardKey.numpad0,
+                          LogicalKeyboardKey.numpad1,
+                          LogicalKeyboardKey.numpad2,
+                          LogicalKeyboardKey.numpad3,
+                          LogicalKeyboardKey.numpad4,
+                          LogicalKeyboardKey.numpad5,
+                          LogicalKeyboardKey.numpad6,
+                          LogicalKeyboardKey.numpad7,
+                          LogicalKeyboardKey.numpad8,
+                          LogicalKeyboardKey.numpad9,
+                          LogicalKeyboardKey.numpadDecimal,
+                        };
+
+                        if (numpadKeys.contains(key.logicalKey)) {
+                          stateManager!.setEditing(true);
+                        }
+                      });
+                    });
                   },
                   onRowDoubleTap: (PlutoGridOnRowDoubleTapEvent event) {
                     debugPrint('Row double tapped');
                   },
                   onChanged: _onGridChanged,
                   onSelected: (PlutoGridOnSelectedEvent event) async {
-                    if (event.cell != null &&
-                        event.cell!.column.title == 'Date') {
-                      await selectDateForCell(event.row!, event.cell!.column);
+                    if (event.row == null || event.cell == null) return;
+
+                    final column = event.cell!.column;
+                    final row = event.row!;
+
+                    // ✅ Handle Date column — open picker
+                    if (column.title == 'Date') {
+                      await selectDateForCell(row, column);
+                      return; // ← return early, no setEditing needed for date
                     }
+
+                    // ✅ Skip read-only, attachment, remark-icon columns
+                    final skipFields = {
+                      'col5', 'col8', 'col10', 'col11', 'col12',
+                      'col13', 'col14', 'col15', 'col21', 'col22',
+                      'col25', // Outstanding (read-only)
+                      'col25', // Attachment handled by its own InkWell
+                    };
+
+                    if (skipFields.contains(column.field)) return;
+
+                    // ✅ For remarkConfig fields — let InkWell handle it, still set editing for text part
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (stateManager == null) return;
+                      if (!stateManager!.isEditing) {
+                        stateManager!.setEditing(true);
+                      }
+                    });
                   },
+
                   configuration: PlutoGridConfiguration(
                     style: PlutoGridStyleConfig(
                       rowHeight: 45,
@@ -460,6 +591,10 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
                     scrollbar: const PlutoGridScrollbarConfig(
                       isAlwaysShown: true,
                     ),
+                    // ✅ Single click enters edit mode
+                    enterKeyAction: PlutoGridEnterKeyAction.editingAndMoveDown,
+                    tabKeyAction: PlutoGridTabKeyAction.moveToNextOnEdge,
+                    enableMoveDownAfterSelecting: true,
                   ),
                   noRowsWidget: _buildEmptyState(), // ← empty state inside grid
                 ),
@@ -489,12 +624,15 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
                   child: InkWell(
                     onTap: _submitAllRows,
                     borderRadius: BorderRadius.circular(10),
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 15),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 15),
                       child: Center(
                         child: Text(
-                          'Submit',
-                          style: TextStyle(
+                          // ✅ Show Update if all rows are existing, Submit if any new row
+                          _existingRowKeys.length == stateManager?.rows.length
+                              ? 'Update'
+                              : 'Submit',
+                          style: const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
@@ -505,6 +643,7 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
                   ),
                 ),
               ),
+            const SizedBox(height: 16),
           ],
         ),
       ),
@@ -518,7 +657,7 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
     setState(() {});
   }
 
-  void initializeGrid() {
+  void initializeGrid({bool isViewOnly = false}) {
     final List<String> columnNames = [
       'Bill No',
       'Date',
@@ -544,32 +683,27 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
       'Net receivable',
       'Net amount received',
       'Date',
-      'Attachment',
-      'Outstanding'
+      'Outstanding',
+      'Attachment'
     ];
 
     // ── Read-only (auto-calculated) columns ──────────────────────────────────
     final Set<String> readOnlyFields = {
-      'col5', // Work Done value
-      'col8', // Taxable value
-      'col10', // Total bill amount
-      'col11', // TDS
-      'col12', // TDS CGST
-      'col13', // TDS SGST
-      'col14', // Security deposit
-      'col15', // Labour Cess
-      'col21', // Total Deduction
-      'col22', // Net receivable
-      'col25', // Outstanding
+      'col5',
+      'col8',
+      'col10',
+      'col11',
+      'col12',
+      'col13',
+      'col14',
+      'col15',
+      'col21',
+      'col22',
+      'col25',
     };
 
-    // ── Percent columns ───────────────────────────────────────────────────────
-    final Set<String> percentFields = {
-      'col4',
-      'col9',
-    };
+    final Set<String> percentFields = {'col4', 'col9'};
 
-    // ── Number columns ────────────────────────────────────────────────────────
     final Set<String> numberFields = {
       'col5',
       'col6',
@@ -590,12 +724,15 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
       'col22',
       'col23',
       'col25',
+      'col26',
     };
 
     columns = List.generate(columnNames.length, (index) {
       final title = columnNames[index];
       final field = 'col${index + 1}';
-      final isReadOnly = readOnlyFields.contains(field);
+      // ── Force read-only for every column when isViewOnly ─────────────────
+      final isReadOnly = isViewOnly || readOnlyFields.contains(field);
+
       // ── Attachment column ─────────────────────────────────────────────────
       if (title == 'Attachment') {
         return PlutoColumn(
@@ -606,16 +743,17 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
           readOnly: false,
           width: 120,
           renderer: (ctx) {
-            final hasAttachment =
-                ctx.cell.value != null && ctx.cell.value.toString().isNotEmpty;
+            final cellValue = ctx.cell.value;
+            final hasAttachment = cellValue != null &&
+                cellValue.toString().trim().isNotEmpty &&
+                cellValue.toString().trim() != 'null';
+
             return Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 if (hasAttachment)
                   InkWell(
-                    onTap: () {
-                      _showAttachmentDialog(ctx.row, field);
-                    },
+                    onTap: () => _showAttachmentDialog(ctx.row, field),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 4),
@@ -629,23 +767,19 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
                           Icon(Icons.attach_file,
                               size: 16, color: Colors.green.shade700),
                           const SizedBox(width: 4),
-                          Text(
-                            'View',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.green.shade700,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
+                          Text('View',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.green.shade700,
+                                  fontWeight: FontWeight.w500)),
                         ],
                       ),
                     ),
                   )
-                else
+                // ── Hide "Attach" option entirely in view-only mode ─────────
+                else if (!isViewOnly)
                   InkWell(
-                    onTap: () {
-                      _pickAndAttachFile(ctx.row, field);
-                    },
+                    onTap: () => _pickAndAttachFile(ctx.row, field),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 4),
@@ -660,25 +794,21 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
                           Icon(Icons.add,
                               size: 16, color: Colors.blue.shade700),
                           const SizedBox(width: 4),
-                          Text(
-                            'Attach',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.blue.shade700,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
+                          Text('Attach',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.blue.shade700,
+                                  fontWeight: FontWeight.w500)),
                         ],
                       ),
                     ),
                   ),
-                if (hasAttachment)
+                // ── Hide remove "X" in view-only mode ─────────────────────
+                if (hasAttachment && !isViewOnly)
                   IconButton(
                     icon:
                         Icon(Icons.close, size: 16, color: Colors.red.shade400),
-                    onPressed: () {
-                      _removeAttachment(ctx.row, field);
-                    },
+                    onPressed: () => _removeAttachment(ctx.row, field),
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
                   ),
@@ -698,6 +828,17 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
           readOnly: isReadOnly,
           width: 150,
           backgroundColor: isReadOnly ? const Color(0xFFF1F5F9) : null,
+          renderer: (ctx) {
+            return Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                ctx.cell.value == null || ctx.cell.value.toString().isEmpty
+                    ? ''
+                    : ctx.cell.value.toString(),
+                style: const TextStyle(fontSize: 13),
+              ),
+            );
+          },
         );
       }
 
@@ -706,10 +847,7 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
         return PlutoColumn(
           title: title,
           field: field,
-          type: PlutoColumnType.number(
-            negative: false,
-            format: '#,###.##',
-          ),
+          type: PlutoColumnType.number(negative: false, format: '#,###.##'),
           enableEditingMode: !isReadOnly,
           readOnly: isReadOnly,
           width: 150,
@@ -720,11 +858,30 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
             if (num == 0) return '';
             return num == num.truncateToDouble() ? '${num.toInt()}%' : '$num%';
           },
+          footerRenderer: field == 'col4'
+              ? (rendererContext) {
+                  return PlutoAggregateColumnFooter(
+                    rendererContext: rendererContext,
+                    type: PlutoAggregateColumnType.sum,
+                    format: '#,###.##',
+                    alignment: Alignment.centerRight,
+                    titleSpanBuilder: (text) => [
+                      TextSpan(
+                        text: text.isEmpty ? '' : '$text%',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.indigo.shade900,
+                        ),
+                      ),
+                    ],
+                  );
+                }
+              : null,
         );
       }
 
-      // ── Number columns ────────────────────────────────────────────────────
-
+      // ── Remark-icon columns ────────────────────────────────────────────────
       if (remarkConfig.containsKey(field)) {
         final config = remarkConfig[field]!;
 
@@ -733,24 +890,32 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
           field: field,
           type: PlutoColumnType.number(),
           width: 170,
+          // ── Force non-editable in view-only mode ──────────────────────────
+          enableEditingMode: !isViewOnly,
+          readOnly: isViewOnly,
           renderer: (ctx) {
             return Row(
               children: [
                 Expanded(
-                  child: Text(
-                    ctx.cell.value == null || ctx.cell.value == 0
-                        ? ''
-                        : formatIndianNumber(
-                            (ctx.cell.value as num).toDouble(),
-                          ),
+                  child: GestureDetector(
+                    onTap: isViewOnly
+                        ? null // ← disable tap-to-edit
+                        : () {
+                            stateManager!.setCurrentCell(ctx.cell, ctx.rowIdx);
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              stateManager!.setEditing(true);
+                            });
+                          },
+                    child: Text(
+                      ctx.cell.value == null || ctx.cell.value == 0
+                          ? ''
+                          : formatIndianNumber(
+                              (ctx.cell.value as num).toDouble()),
+                    ),
                   ),
                 ),
+                // ── In view-only mode, icon still opens dialog but read-only ──
                 InkWell(
-                  child: const Icon(
-                    Icons.edit_note,
-                    color: Colors.green,
-                    size: 20,
-                  ),
                   onTap: () {
                     _showAmountRemarksDialog(
                       row: ctx.row,
@@ -759,26 +924,41 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
                       title: config['title']!,
                     );
                   },
+                  child: const Icon(Icons.edit_note,
+                      color: Colors.green, size: 20),
+                ),
+              ],
+            );
+          },
+          footerRenderer: (rendererContext) {
+            return PlutoAggregateColumnFooter(
+              rendererContext: rendererContext,
+              type: PlutoAggregateColumnType.sum,
+              format: '#,###',
+              alignment: Alignment.centerRight,
+              titleSpanBuilder: (text) => [
+                TextSpan(
+                  text: text.isEmpty ? '' : '₹ $text',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Colors.indigo.shade900),
                 ),
               ],
             );
           },
         );
       }
+
+      // ── Number columns ────────────────────────────────────────────────────
       if (numberFields.contains(field)) {
         return PlutoColumn(
           title: title,
           field: field,
-          type: PlutoColumnType.number(
-            negative: true,
-            format: '#,###',
-          ),
+          type: PlutoColumnType.number(negative: true, format: '#,###'),
           enableEditingMode: !isReadOnly,
           readOnly: isReadOnly,
           width: 150,
-          backgroundColor: isReadOnly
-              ? const Color(0xFFF1F5F9) // ← grey tint for auto-calc fields
-              : null,
+          backgroundColor: isReadOnly ? const Color(0xFFF1F5F9) : null,
           renderer: isReadOnly
               ? (ctx) => Align(
                     alignment: Alignment.centerRight,
@@ -793,7 +973,34 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
                       ),
                     ),
                   )
-              : null,
+              : (ctx) => Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      ctx.cell.value == 0 || ctx.cell.value == null
+                          ? ''
+                          : formatIndianNumber(
+                              (ctx.cell.value as num).toDouble()),
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+          footerRenderer: (rendererContext) {
+            return PlutoAggregateColumnFooter(
+              rendererContext: rendererContext,
+              type: PlutoAggregateColumnType.sum,
+              format: '#,##,###',
+              alignment: Alignment.centerRight,
+              titleSpanBuilder: (text) => [
+                TextSpan(
+                  text: text.isEmpty ? '' : '₹ $text',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.indigo.shade900,
+                  ),
+                ),
+              ],
+            );
+          },
         );
       }
 
@@ -805,187 +1012,247 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
         enableEditingMode: !isReadOnly,
         readOnly: isReadOnly,
         width: 150,
+        footerRenderer: title == 'Bill Description'
+            ? (rendererContext) {
+                return const Align(
+                  alignment: Alignment.centerRight,
+                  child: Padding(
+                    padding: EdgeInsets.only(right: 8),
+                    child: Text(
+                      'TOTAL',
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87),
+                    ),
+                  ),
+                );
+              }
+            : null,
       );
     });
 
     columns.addAll([
       PlutoColumn(
-        title: 'SecAdvRemark',
-        field: 'col6Remark',
-        type: PlutoColumnType.text(),
-        hide: true,
-      ),
+          title: 'SBNO',
+          field: 'colSBNO',
+          type: PlutoColumnType.number(),
+          hide: true),
       PlutoColumn(
-        title: 'MobAdvRemark',
-        field: 'col7Remark',
-        type: PlutoColumnType.text(),
-        hide: true,
-      ),
+          title: 'SecAdvRemark',
+          field: 'col6Remark',
+          type: PlutoColumnType.text(),
+          hide: true),
       PlutoColumn(
-        title: 'OtherDedRemark',
-        field: 'col17Remark',
-        type: PlutoColumnType.text(),
-        hide: true,
-      ),
+          title: 'MobAdvRemark',
+          field: 'col7Remark',
+          type: PlutoColumnType.text(),
+          hide: true),
       PlutoColumn(
-        title: 'WithheldRemark',
-        field: 'col18Remark',
-        type: PlutoColumnType.text(),
-        hide: true,
-      ),
+          title: 'OtherDedRemark',
+          field: 'col17Remark',
+          type: PlutoColumnType.text(),
+          hide: true),
       PlutoColumn(
-        title: 'MobAdvRecoveryRemark',
-        field: 'col19Remark',
-        type: PlutoColumnType.text(),
-        hide: true,
-      ),
+          title: 'WithheldRemark',
+          field: 'col18Remark',
+          type: PlutoColumnType.text(),
+          hide: true),
       PlutoColumn(
-        title: 'WithheldReleaseRemark',
-        field: 'col20Remark',
-        type: PlutoColumnType.text(),
-        hide: true,
-      ),
+          title: 'MobAdvRecoveryRemark',
+          field: 'col19Remark',
+          type: PlutoColumnType.text(),
+          hide: true),
       PlutoColumn(
-        title: 'TotalDeductionRemark',
-        field: 'col21Remark',
-        type: PlutoColumnType.text(),
-        hide: true,
-      ),
+          title: 'WithheldReleaseRemark',
+          field: 'col20Remark',
+          type: PlutoColumnType.text(),
+          hide: true),
       PlutoColumn(
-        title: 'NetAmountReceivedRemark',
-        field: 'col23Remark',
-        type: PlutoColumnType.text(),
-        hide: true,
-      ),
-      // ── Add file columns too ───────────────────────────────────────────
+          title: 'TotalDeductionRemark',
+          field: 'col21Remark',
+          type: PlutoColumnType.text(),
+          hide: true),
       PlutoColumn(
-        title: 'FileName',
-        field: 'col25FileName',
-        type: PlutoColumnType.text(),
-        hide: true,
-      ),
+          title: 'NetAmountReceivedRemark',
+          field: 'col23Remark',
+          type: PlutoColumnType.text(),
+          hide: true),
       PlutoColumn(
-        title: 'FileBase64',
-        field: 'col25Base64',
-        type: PlutoColumnType.text(),
-        hide: true,
-      ),
+          title: 'FileName',
+          field: 'col25FileName',
+          type: PlutoColumnType.text(),
+          hide: true),
+      PlutoColumn(
+          title: 'FileBase64',
+          field: 'col25Base64',
+          type: PlutoColumnType.text(),
+          hide: true),
+      PlutoColumn(
+          title: 'FileType',
+          field: 'col25FileType',
+          type: PlutoColumnType.text(),
+          hide: true),
     ]);
 
     rows = [];
   }
 
   void addNewRow() {
-    // ── Build cell map with ONLY fields that exist in columns ─────────────
     final Map<String, PlutoCell> cells = {};
 
-    // ← iterate columns and assign default values per field
     for (final col in columns) {
       switch (col.field) {
         case 'col1':
           cells[col.field] = PlutoCell(value: '');
-          break; // Bill No
+          break;
         case 'col2':
           cells[col.field] = PlutoCell(value: '');
-          break; // Date
+          break;
         case 'col3':
           cells[col.field] = PlutoCell(value: '');
-          break; // Bill Desc
+          break;
         case 'col4':
           cells[col.field] = PlutoCell(value: 0);
-          break; // % of work
+          break;
         case 'col5':
           cells[col.field] = PlutoCell(value: 0);
-          break; // Work Done
+          break;
         case 'col6':
           cells[col.field] = PlutoCell(value: 0);
-          break; // Sec Adv
+          break;
         case 'col7':
           cells[col.field] = PlutoCell(value: 0);
-          break; // Mob Adv
+          break;
         case 'col8':
           cells[col.field] = PlutoCell(value: 0);
-          break; // Taxable
+          break;
         case 'col9':
           cells[col.field] = PlutoCell(value: 18);
-          break; // GST
+          break;
         case 'col10':
           cells[col.field] = PlutoCell(value: 0);
-          break; // Tot Bill
+          break;
         case 'col11':
           cells[col.field] = PlutoCell(value: 0);
-          break; // TDS
+          break;
         case 'col12':
           cells[col.field] = PlutoCell(value: 0);
-          break; // TDS CGST
+          break;
         case 'col13':
           cells[col.field] = PlutoCell(value: 0);
-          break; // TDS SGST
+          break;
         case 'col14':
           cells[col.field] = PlutoCell(value: 0);
-          break; // Sec Dep
+          break;
         case 'col15':
           cells[col.field] = PlutoCell(value: 0);
-          break; // Lab Cess
+          break;
         case 'col16':
           cells[col.field] = PlutoCell(value: 0);
-          break; // Mob Int
+          break;
         case 'col17':
           cells[col.field] = PlutoCell(value: 0);
-          break; // Oth Ded
+          break;
         case 'col18':
           cells[col.field] = PlutoCell(value: 0);
-          break; // Withheld
+          break;
         case 'col19':
           cells[col.field] = PlutoCell(value: 0);
-          break; // Mob Adv Rec
+          break;
         case 'col20':
           cells[col.field] = PlutoCell(value: 0);
-          break; // WH Release
+          break;
         case 'col21':
           cells[col.field] = PlutoCell(value: 0);
-          break; // Tot Ded
+          break;
         case 'col22':
           cells[col.field] = PlutoCell(value: 0);
-          break; // Net Rec
+          break;
         case 'col23':
           cells[col.field] = PlutoCell(value: 0);
-          break; // Net Amt Recd
+          break;
         case 'col24':
           cells[col.field] = PlutoCell(value: '');
-          break; // Rec Date
-        case 'col25':
+          break;
+        case 'colStage':
+          cells[col.field] = PlutoCell(value: '');
+          break;
+        case 'col26':
           cells[col.field] = PlutoCell(value: 0);
-          break; // Outstanding
-        // ── Hidden remark/file columns ─────────────────────────────────
+          break; // ✅ Outstanding
+        case 'col25':
+          cells[col.field] = PlutoCell(value: '');
+          break; // ✅ Attachment
+
+        // ✅ Hidden remark columns
+        case 'col6Remark':
+          cells[col.field] = PlutoCell(value: '');
+          break;
+        case 'col7Remark':
+          cells[col.field] = PlutoCell(value: '');
+          break;
+        case 'col17Remark':
+          cells[col.field] = PlutoCell(value: '');
+          break;
+        case 'col18Remark':
+          cells[col.field] = PlutoCell(value: '');
+          break;
+        case 'col19Remark':
+          cells[col.field] = PlutoCell(value: '');
+          break;
+        case 'col20Remark':
+          cells[col.field] = PlutoCell(value: '');
+          break;
+        case 'col21Remark':
+          cells[col.field] = PlutoCell(value: '');
+          break;
+        case 'col23Remark':
+          cells[col.field] = PlutoCell(value: '');
+          break;
+
+        // ✅ Hidden attachment columns — MUST be here
+        case 'col25FileName':
+          cells[col.field] = PlutoCell(value: '');
+          break;
+        case 'col25Base64':
+          cells[col.field] = PlutoCell(value: '');
+          break;
+        case 'col25FileType':
+          cells[col.field] = PlutoCell(value: '');
+          break;
+
+        // ✅ Hidden SBNO column
+        case 'colSBNO':
+          cells[col.field] = PlutoCell(value: 0);
+          break;
+
         default:
           cells[col.field] = PlutoCell(value: '');
           break;
       }
     }
 
-    final newRow = PlutoRow(cells: cells);
-
+    // ✅ ONLY use stateManager.appendRows — never PlutoRow directly
     if (stateManager != null) {
+      final newRow = PlutoRow(cells: cells);
       stateManager!.appendRows([newRow]);
       setState(() => rows = stateManager!.rows);
-    } else {
-      setState(() => rows = [...rows, newRow]);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (stateManager != null) {
-          stateManager!.removeAllRows();
-          stateManager!.appendRows(rows);
-        }
-      });
     }
   }
 
   void _onGridChanged(PlutoGridOnChangedEvent event) {
     final row = event.row;
     _calculateRowTotals(row);
+    setState(() {});
   }
 
   void _calculateRowTotals(PlutoRow row) {
+    // ── Helper: get the real field name for a given column title ───────────
+    String _fieldFor(String title) {
+      return columns.firstWhere((c) => c.title == title).field;
+    }
+
     double _cell(String field) {
       final v = row.cells[field]?.value;
       if (v == null) return 0;
@@ -993,7 +1260,6 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
     }
 
     void _set(String field, double value) {
-      // ← directly set cell value without going through stateManager
       row.cells[field]?.value = value.roundToDouble();
     }
 
@@ -1062,13 +1328,14 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
     final netRec = totBill > 0 ? (totBill - totDed) : 0.0;
     _set(_fNetRec, netRec);
 
-    // ── Step 10: Outstanding ──────────────────────────────────────────────────
+    // ── Step 10: Outstanding — written via title lookup, immune to col swaps ──
     final netAmtRecd = _cell(_fNetAmtRecd);
     final outstanding = netRec - netAmtRecd;
-    _set(_fOutstanding, outstanding);
+    final outstandingField = _fieldFor('Outstanding'); // ← always correct
+    row.cells[outstandingField]?.value = outstanding.roundToDouble();
 
     // ── Force grid UI refresh ─────────────────────────────────────────────────
-    stateManager?.notifyListeners(); // ← this is the key fix
+    stateManager?.notifyListeners();
   }
 
   void addMultipleRows(int count) {
@@ -1160,7 +1427,7 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
     }
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState({bool isViewOnly = false}) {
     return Container(
       decoration: BoxDecoration(
         border: Border.all(color: Colors.grey.shade300),
@@ -1185,34 +1452,38 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            Text(
-              'Click the + button in the app bar to add a row',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey.shade500,
+            if (!isViewOnly)
+              Text(
+                'Click the + button in the app bar to add a row',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey.shade500,
+                ),
               ),
-            ),
             const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: () {
-                if (selectedCustomerId == null || selectedProjectId == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Please select Customer and Site first.'),
-                      backgroundColor: Colors.orange,
-                    ),
-                  );
-                  return;
-                }
-                addNewRow();
-              },
-              icon: const Icon(Icons.add),
-              label: const Text('Add Row'),
-              style: ElevatedButton.styleFrom(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            if (!isViewOnly) ...[
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: () {
+                  if (selectedCustomerId == null || selectedProjectId == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Please select Customer and Site first.'),
+                        backgroundColor: Colors.orange,
+                      ),
+                    );
+                    return;
+                  }
+                  addNewRow();
+                },
+                icon: const Icon(Icons.add),
+                label: const Text('Add Row'),
+                style: ElevatedButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                ),
               ),
-            ),
+            ]
           ],
         ),
       ),
@@ -1245,68 +1516,6 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
     });
 
     stateManager?.notifyListeners();
-  }
-
-  void _showWODetailsDialog(BuildContext context) {
-    if (_woValueInclGst == null) return;
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Work Order Value Details'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const SizedBox(
-                  width: 90,
-                  child: Text(
-                    'Value',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-                  ),
-                ),
-                SizedBox(
-                  width: 100,
-                  child: Text(
-                    ' ₹ ${formatIndianNumber(_woValueExclGst ?? 0)}',
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ),
-                const Text(
-                  'Exclusive of GST 18%',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const SizedBox(width: 90),
-                SizedBox(
-                  width: 100,
-                  child: Text(
-                    '₹ ${formatIndianNumber(_woValueInclGst ?? 0)}',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                const Text(
-                  'Inclusive of GST 18%',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-              ],
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
   }
 
   Future<void> fetchWorkOrderValue(int customerId, int projectId) async {
@@ -1425,7 +1634,7 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
   }
 
   Future<void> _submitAllRows() async {
-    if (stateManager == null || rows.isEmpty) {
+    if (stateManager == null || stateManager!.rows.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('No rows to submit'),
@@ -1435,16 +1644,28 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
       return;
     }
 
-    // ── Validate required fields ───────────────────────────────────────────
-    for (int i = 0; i < stateManager!.rows.length; i++) {
-      final row = stateManager!.rows[i];
+    // ── Separate new rows vs existing rows ────────────────────────────────
+    final List<PlutoRow> newRows = [];
+    final List<PlutoRow> existingRows = [];
+
+    for (final row in stateManager!.rows) {
+      if (_existingRowKeys.contains(row.key.toString())) {
+        existingRows.add(row); // fetched from API → UPDATE
+      } else {
+        newRows.add(row); // added by user → INSERT
+      }
+    }
+
+    // ── Validate only new rows need Bill No + Date ─────────────────────────
+    for (int i = 0; i < newRows.length; i++) {
+      final row = newRows[i];
       final billNo = row.cells[_fBillNo]?.value?.toString().trim() ?? '';
       final billDate = row.cells[_fDate]?.value?.toString().trim() ?? '';
 
       if (billNo.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Row ${i + 1}: Bill No is required'),
+            content: Text('New Row ${i + 1}: Bill No is required'),
             backgroundColor: Colors.red,
           ),
         );
@@ -1453,7 +1674,7 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
       if (billDate.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Row ${i + 1}: Date is required'),
+            content: Text('New Row ${i + 1}: Date is required'),
             backgroundColor: Colors.red,
           ),
         );
@@ -1473,8 +1694,23 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
       int failCount = 0;
       List<String> failMessages = [];
 
-      for (final row in stateManager!.rows) {
-        final payload = _buildPayloadFromRow(row);
+      // ── INSERT new rows only ───────────────────────────────────────────
+      for (final row in newRows) {
+        final payload = _buildPayloadFromRow(row, isUpdate: false);
+        final result = await saveSalesBilling(payload);
+
+        if (result['Success'] == true) {
+          successCount++;
+          _existingRowKeys.add(row.key.toString()); // now it's existing
+        } else {
+          failCount++;
+          failMessages.add(result['Message']?.toString() ?? 'Unknown error');
+        }
+      }
+
+      // ── UPDATE existing rows ───────────────────────────────────────────
+      for (final row in existingRows) {
+        final payload = _buildPayloadFromRow(row, isUpdate: true);
         final result = await saveSalesBilling(payload);
 
         if (result['Success'] == true) {
@@ -1486,13 +1722,18 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
       }
 
       if (!mounted) return;
-      Navigator.pop(context); // close loading
+      Navigator.pop(context);
 
       if (failCount == 0) {
+        // ✅ Detect if it was update or insert
+        final isUpdateOnly = newRows.isEmpty && existingRows.isNotEmpty;
+        final message = isUpdateOnly
+            ? '$successCount ${successCount == 1 ? 'entry' : 'entries'} updated successfully'
+            : '$successCount ${successCount == 1 ? 'entry' : 'entries'} saved successfully';
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-                '$successCount ${successCount == 1 ? 'entry' : 'entries'} saved successfully'),
+            content: Text(message),
             backgroundColor: Colors.green,
           ),
         );
@@ -1503,7 +1744,8 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-                '$successCount saved, $failCount failed: ${failMessages.first}'),
+              '$successCount saved, $failCount failed: ${failMessages.first}',
+            ),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 4),
           ),
@@ -1511,7 +1753,7 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-      Navigator.pop(context); // close loading
+      Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error: $e'),
@@ -1577,7 +1819,9 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
           final entries =
               list.map((e) => SalesBillingModel.fromJson(e)).toList();
 
-          final loadedRows = entries.map((e) {
+          final loadedRows = list.asMap().entries.map((mapEntry) {
+            final raw = mapEntry.value as Map<String, dynamic>;
+            final e = SalesBillingModel.fromJson(raw);
             return PlutoRow(cells: {
               // ── Text ──────────────────────────────────────────────────
               _fBillNo: PlutoCell(value: e.billno ?? ''),
@@ -1642,14 +1886,12 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
               _fAttachment: PlutoCell(
                 value: e.sbfname ?? '', // Assuming model has this field
               ),
-              'col25FileName': PlutoCell(
-                value: e.sbfname ?? '', // Store filename
-              ),
-              'col25Base64': PlutoCell(
-                value: e.sbfname ?? '', // Store base64 data (if returned)
-              ),
 
               // ── Hidden remark columns ──────────────────────────────────────
+              'col25FileName': PlutoCell(value: e.sbfname ?? ''),
+              'col25Base64': PlutoCell(value: ''),
+              'col25FileType': PlutoCell(value: e.sbftype ?? ''),
+              'colSBNO': PlutoCell(value: e.sbno ?? 0),
               'col6Remark': PlutoCell(value: e.secadvremks ?? ''),
               'col7Remark': PlutoCell(value: e.mobadvremks ?? ''),
               'col17Remark': PlutoCell(value: e.othdedremks ?? ''),
@@ -1657,12 +1899,17 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
               'col19Remark': PlutoCell(value: e.mobadvrecremks ?? ''),
               'col20Remark': PlutoCell(value: e.whrlseremks ?? ''),
               'col23Remark': PlutoCell(value: e.netrecdremks ?? ''),
+              'colStage': PlutoCell(value: e.stageidname ?? ''),
             });
           }).toList();
 
           setState(() {
             _billingList = entries;
             rows = loadedRows;
+            _existingRowKeys.clear();
+            for (final row in loadedRows) {
+              _existingRowKeys.add(row.key.toString()); // mark as existing
+            }
           });
 
           if (stateManager != null) {
@@ -1691,7 +1938,8 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
     }
   }
 
-  Map<String, dynamic> _buildPayloadFromRow(PlutoRow row) {
+  Map<String, dynamic> _buildPayloadFromRow(PlutoRow row,
+      {bool isUpdate = false}) {
     // ── Helper to read cell value as double ──────────────────────────────
     double _num(String field) {
       final v = row.cells[field]?.value;
@@ -1756,45 +2004,41 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
     final perWork = _str(_fPerWork);
     final perWorkFormatted = perWork.endsWith('%') ? perWork : '$perWork%';
 
-    // ── ATTACHMENT DATA - CRITICAL FIX ──────────────────────────────────
-    // Get attachment data from the hidden columns
-    String attachmentFileName = '';
-    String attachmentBase64 = '';
+    // ── ATTACHMENT ────────────────────────────────────────────────────────
+    final base64Cell = row.cells['col25Base64']?.value?.toString().trim() ?? '';
 
-    // Safely get attachment filename
-    final fileNameCell = row.cells['col25FileName'];
-    if (fileNameCell != null && fileNameCell.value != null) {
-      attachmentFileName = fileNameCell.value.toString().trim();
-    }
+    List<Map<String, dynamic>> files = [];
 
-    // Safely get attachment base64 data
-    final base64Cell = row.cells['col25Base64'];
-    if (base64Cell != null && base64Cell.value != null) {
-      attachmentBase64 = base64Cell.value.toString().trim();
-    }
-
-    // Also check the main attachment field as fallback
-    if (attachmentFileName.isEmpty) {
-      final attachmentCell = row.cells[_fAttachment];
-      if (attachmentCell != null && attachmentCell.value != null) {
-        attachmentFileName = attachmentCell.value.toString().trim();
+    if (base64Cell.isNotEmpty) {
+      try {
+        // ✅ Parse JSON list stored by _pickAndAttachFile
+        final decoded = jsonDecode(base64Cell) as List<dynamic>;
+        files = decoded
+            .map((e) => {
+                  'FILENAME': e['FILENAME']?.toString() ?? '',
+                  'FILEDATA': e['FILEDATA']?.toString() ?? '',
+                })
+            .toList();
+      } catch (_) {
+        // ✅ Fallback: single file old format
+        final fileName =
+            row.cells['col25FileName']?.value?.toString().trim() ?? '';
+        if (fileName.isNotEmpty && base64Cell.isNotEmpty) {
+          files = [
+            {'FILENAME': fileName, 'FILEDATA': base64Cell}
+          ];
+        }
       }
     }
 
-    // ── DEBUG LOGGING ────────────────────────────────────────────────────
-    print('=== Attachment Debug ===');
-    print('Attachment File Name: $attachmentFileName');
-    print('Attachment Base64 Length: ${attachmentBase64.length}');
-    print(
-        'Attachment Base64 Preview: ${attachmentBase64.substring(0, attachmentBase64.length > 50 ? 50 : attachmentBase64.length)}...');
-    print('========================');
+    // ✅ Get SBNO — 0 for new, real value for update
+    final sbno = isUpdate ? (_num('colSBNO').toInt()) : 0;
 
     return {
       // ── Core ──────────────────────────────────────────────────────────
-      'SBNO': 0, // always insert new
+      'SBNO': sbno,
       'CUSID': selectedCustomerId,
       'PROJID': selectedProjectId,
-      'STAGEIDNAME': '', // stage not in grid — keep empty or handle separately
 
       'BILLNO': _str(_fBillNo),
       'BILLDATE': _date(_fDate),
@@ -1845,14 +2089,15 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
       'NETRECDAMNT': netAmtRecd.toInt(),
       'NETRECDDT': _date(_fRecDate),
       'NETRECDREMKS': netRecdRemarks,
-      'OUTSTANDAMNT': _num(_fOutstanding).toInt(),
+      'OUTSTANDAMNT': () {
+        final outstandingField =
+            columns.firstWhere((c) => c.title == 'Outstanding').field;
+        return _num(outstandingField).toInt();
+      }(),
+      'STAGEIDNAME': _str('colStage'),
 
-      // ── ATTACHMENT FIELDS - ENSURE THEY'RE INCLUDED ───────────────────
-      'ATTACHMENTFILENAME':
-          attachmentFileName.isNotEmpty ? attachmentFileName : '',
-      'ATTACHMENTBASE64': attachmentBase64.isNotEmpty ? attachmentBase64 : '',
-
-      'FILES': attachmentBase64.isNotEmpty ? [] : [], // Empty array for files
+      // ✅ This is what saves the file on server
+      'FILES': files, // ✅ now sends multiple files
       'REMOVEDFILES': '',
 
       // ── Audit ─────────────────────────────────────────────────────────
@@ -1863,48 +2108,58 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
   Future<void> _pickAndAttachFile(PlutoRow row, String field) async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
-        allowMultiple: false,
+        allowMultiple: true, // ✅ multiple files
         type: FileType.custom,
         allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'dwg'],
       );
 
-      if (result == null) return;
+      if (result == null || result.files.isEmpty) return;
 
-      final file = File(result.files.single.path!);
-      final fileName = result.files.single.name;
-      final bytes = await file.readAsBytes();
-      final base64String = base64Encode(bytes);
+      List<Map<String, String>> fileList = [];
+      List<String> fileNames = [];
 
-      // ── DEBUG LOGGING ──────────────────────────────────────────────────
-      print('=== File Picked Debug ===');
-      print('File Name: $fileName');
-      print('File Size: ${bytes.length} bytes');
-      print('Base64 Length: ${base64String.length}');
-      print('==========================');
+      for (final pickedFile in result.files) {
+        final file = File(pickedFile.path!);
+        final fileName = pickedFile.name;
+        final bytes = await file.readAsBytes();
+        final base64String = base64Encode(bytes);
 
-      setState(() {
-        // Store in main attachment column (visible)
-        if (row.cells[field] != null) {
-          row.cells[field]!.value = fileName;
-        }
+        print('=== File Picked ===');
+        print('File Name: $fileName');
+        print('File Size: ${bytes.length} bytes');
+        print('Base64 Length: ${base64String.length}');
+        print('===================');
 
-        // Store in hidden columns for payload
-        final fileNameField = '${field}FileName';
-        if (row.cells[fileNameField] != null) {
-          row.cells[fileNameField]!.value = fileName;
-        }
+        fileList.add({
+          'FILENAME': fileName,
+          'FILEDATA': base64String,
+        });
+        fileNames.add(fileName);
+      }
 
-        final base64Field = '${field}Base64';
-        if (row.cells[base64Field] != null) {
-          row.cells[base64Field]!.value = base64String;
-        }
-      });
+      // ✅ Store display name (comma separated) in visible cell
+      final displayNames = fileNames.join(', ');
+      stateManager?.changeCellValue(
+        row.cells[field]!,
+        displayNames,
+        notify: true,
+      );
 
-      stateManager?.notifyListeners();
+      // ✅ Store JSON list in hidden cell for payload
+      if (row.cells['${field}FileName'] != null) {
+        row.cells['${field}FileName']!.value = fileNames.join(',');
+      }
+      if (row.cells['${field}Base64'] != null) {
+        // ✅ Store as JSON string — parse back when building payload
+        row.cells['${field}Base64']!.value = jsonEncode(fileList);
+      }
+
+      print('✅ Total files attached: ${fileList.length}');
+      print('✅ File names: $displayNames');
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Attachment "$fileName" added successfully'),
+          content: Text('${fileList.length} file(s) attached successfully'),
           backgroundColor: Colors.green,
         ),
       );
@@ -1922,16 +2177,6 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
   void _showAttachmentDialog(PlutoRow row, String field) {
     final fileName = row.cells[field]?.value?.toString() ?? '';
     final base64Data = row.cells['${field}Base64']?.value?.toString() ?? '';
-
-    if (base64Data.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No attachment found'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
 
     showDialog(
       context: context,
@@ -2010,6 +2255,556 @@ class _DataEntryScreenState extends State<DataEntryScreen> {
         backgroundColor: Colors.orange,
       ),
     );
+  }
+
+  Future<void> _fetchBillingSummaryForProject(int projectId) async {
+    try {
+      final uri = ApiUtils.getUri('GetSalesBillingSummary');
+
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+      ).timeout(const Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body);
+
+        if (json['Success'] == true && json['Data'] != null) {
+          final List<dynamic> list = json['Data'];
+
+          final match = list.firstWhere(
+            (e) => e['PROJECTID'] == projectId,
+            orElse: () => null,
+          );
+
+          if (match != null) {
+            setState(() {
+              _billingSummary = SalesBillingSummaryModel.fromJson(match);
+            });
+            debugPrint(
+                '✅ Project Code fetched: ${_billingSummary?.projectCode}');
+          } else {
+            debugPrint(
+                '⚠️ No matching summary found for projectId: $projectId');
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('_fetchBillingSummaryForProject error: $e');
+    }
+  }
+
+  Future<void> _downloadBillingData() async {
+    if (selectedCustomerId == null || selectedProjectId == null) return;
+
+    setState(() => _isLoadingBilling = true);
+
+    try {
+      final uri = ApiUtils.getUri('ViewSalesBillinglist');
+
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'CUSID': selectedCustomerId,
+          'PROJID': selectedProjectId,
+        }),
+      );
+      final totalWorkDone = _billingList.fold<double>(
+        0.0,
+        (sum, e) => sum + (e.workdoneamnt ?? 0),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        if (data['Success'] == true) {
+          final List<dynamic> list = data['BillingList'] ?? [];
+          final entries =
+              list.map((e) => SalesBillingModel.fromJson(e)).toList();
+
+          if (entries.isEmpty) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('No billing data available to download.'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+            return;
+          }
+
+          // ── Build PDF ──────────────────────────────────────────────────
+          final pdf = pw.Document();
+
+          final headers = [
+            'Bill No',
+            'Date',
+            'Description',
+            '% Work',
+            'WD Value',
+            'Sec Adv',
+            'Mob Adv',
+            'Tax Value',
+            'GST %',
+            'Total Bill',
+            'TDS',
+            'TDS CGST',
+            'TDS SGST',
+            'Sec Dep',
+            'Lab Cess',
+            'Mob Int',
+            'Oth Ded',
+            'Withheld',
+            'Mob Adv Rec',
+            'WH Release',
+            'Tot Ded',
+            'Net Rec',
+            'Net Amt Recd',
+            'Recd Date',
+            'Outstanding',
+          ];
+
+          final tableRows = entries.map((e) {
+            return [
+              e.billno ?? '',
+              e.billdate != null
+                  ? DateFormat('dd-MM-yyyy').format(e.billdate!)
+                  : '',
+              e.billdesc ?? '',
+              e.perofwork ?? '0',
+              formatIndianNumber((e.workdoneamnt ?? 0).toDouble()),
+              formatIndianNumber((e.secadvamnt ?? 0).toDouble()),
+              formatIndianNumber((e.mobadvamnt ?? 0).toDouble()),
+              formatIndianNumber((e.billamnt ?? 0).toDouble()),
+              '${(e.gstper ?? 18).toStringAsFixed(0)}%',
+              formatIndianNumber((e.billtotamnt ?? 0).toDouble()),
+              formatIndianNumber((e.tdsamnt ?? 0).toDouble()),
+              formatIndianNumber((e.tdscgstamnt ?? 0).toDouble()),
+              formatIndianNumber((e.tdssgstamnt ?? 0).toDouble()),
+              formatIndianNumber((e.secdepamnt ?? 0).toDouble()),
+              formatIndianNumber((e.labcessamnt ?? 0).toDouble()),
+              formatIndianNumber((e.mobintamnt ?? 0).toDouble()),
+              formatIndianNumber((e.dedamnt ?? 0).toDouble()),
+              formatIndianNumber((e.whamnt ?? 0).toDouble()),
+              formatIndianNumber((e.mobadvrecamnt ?? 0).toDouble()),
+              formatIndianNumber((e.whrlseamnt ?? 0).toDouble()),
+              formatIndianNumber((e.totdedamnt ?? 0).toDouble()),
+              formatIndianNumber((e.netrecamnt ?? 0).toDouble()),
+              formatIndianNumber((e.recamnt ?? 0).toDouble()),
+              e.netrecddt != null
+                  ? DateFormat('dd-MM-yyyy').format(e.netrecddt!)
+                  : '',
+              formatIndianNumber((e.outstandamnt ?? 0).toDouble()),
+            ];
+          }).toList();
+
+          // ── Compute totals ──────────────────────────────────────────────────
+          double sumWorkDone = 0, sumSecAdv = 0, sumMobAdv = 0, sumTaxable = 0;
+          double sumTotBill = 0, sumTDS = 0, sumCGST = 0, sumSGST = 0;
+          double sumSecDep = 0, sumLabCess = 0, sumMobInt = 0, sumOthDed = 0;
+          double sumWithheld = 0,
+              sumMobAdvRec = 0,
+              sumWhRelease = 0,
+              sumTotDed = 0;
+          double sumNetRec = 0, sumNetAmtRecd = 0, sumOutstanding = 0;
+          double sumPerWork = 0;
+
+          for (final e in entries) {
+            sumPerWork += double.tryParse(
+                    (e.perofwork ?? '0').replaceAll('%', '').trim()) ??
+                0;
+            sumWorkDone += (e.workdoneamnt ?? 0).toDouble();
+            sumSecAdv += (e.secadvamnt ?? 0).toDouble();
+            sumMobAdv += (e.mobadvamnt ?? 0).toDouble();
+            sumTaxable += (e.billamnt ?? 0).toDouble();
+            sumTotBill += (e.billtotamnt ?? 0).toDouble();
+            sumTDS += (e.tdsamnt ?? 0).toDouble();
+            sumCGST += (e.tdscgstamnt ?? 0).toDouble();
+            sumSGST += (e.tdssgstamnt ?? 0).toDouble();
+            sumSecDep += (e.secdepamnt ?? 0).toDouble();
+            sumLabCess += (e.labcessamnt ?? 0).toDouble();
+            sumMobInt += (e.mobintamnt ?? 0).toDouble();
+            sumOthDed += (e.dedamnt ?? 0).toDouble();
+            sumWithheld += (e.whamnt ?? 0).toDouble();
+            sumMobAdvRec += (e.mobadvrecamnt ?? 0).toDouble();
+            sumWhRelease += (e.whrlseamnt ?? 0).toDouble();
+            sumTotDed += (e.totdedamnt ?? 0).toDouble();
+            sumNetRec += (e.netrecamnt ?? 0).toDouble();
+            sumNetAmtRecd += (e.recamnt ?? 0).toDouble();
+            sumOutstanding += (e.outstandamnt ?? 0).toDouble();
+          }
+
+          // ── Append total row ───────────────────────────────────────────────
+          tableRows.add([
+            'TOTAL',
+            '',
+            '',
+            '${sumPerWork.toStringAsFixed(0)}%',
+            formatIndianNumber(sumWorkDone),
+            formatIndianNumber(sumSecAdv),
+            formatIndianNumber(sumMobAdv),
+            formatIndianNumber(sumTaxable),
+            '',
+            formatIndianNumber(sumTotBill),
+            formatIndianNumber(sumTDS),
+            formatIndianNumber(sumCGST),
+            formatIndianNumber(sumSGST),
+            formatIndianNumber(sumSecDep),
+            formatIndianNumber(sumLabCess),
+            formatIndianNumber(sumMobInt),
+            formatIndianNumber(sumOthDed),
+            formatIndianNumber(sumWithheld),
+            formatIndianNumber(sumMobAdvRec),
+            formatIndianNumber(sumWhRelease),
+            formatIndianNumber(sumTotDed),
+            formatIndianNumber(sumNetRec),
+            formatIndianNumber(sumNetAmtRecd),
+            '',
+            formatIndianNumber(sumOutstanding),
+          ]);
+
+          pdf.addPage(
+            pw.MultiPage(
+              pageFormat: PdfPageFormat(
+                1600,
+                PdfPageFormat.a3.height,
+                marginLeft: 10,
+                marginRight: 10,
+                marginTop: 5, // Reduced top margin
+                marginBottom: 5,
+              ).landscape,
+              header: (context) => pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Center(
+                    child: pw.Text(
+                      'Billing Report',
+                      style: pw.TextStyle(
+                        fontSize: 18,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  pw.SizedBox(height: 4),
+                  pw.Container(
+                    width: double.infinity,
+                    decoration: pw.BoxDecoration(
+                      border:
+                          pw.Border.all(color: PdfColors.grey400, width: 0.8),
+                      borderRadius: pw.BorderRadius.circular(4),
+                    ),
+                    padding: const pw.EdgeInsets.all(10),
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text('Customer: ${customerController.text}'),
+                        pw.SizedBox(height: 8),
+                        pw.Row(
+                          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                          children: [
+                            pw.Text('Project: ${siteController.text}'),
+                            pw.Text(
+                              'Proj. Code: ${_billingSummary?.projectCode ?? '-'}',
+                              style: pw.TextStyle(
+                                  fontWeight: pw.FontWeight.bold, fontSize: 10),
+                            ),
+                          ],
+                        ),
+                        pw.SizedBox(height: 8),
+                        pw.Wrap(spacing: 10, runSpacing: 5, children: [
+                          pw.Text(
+                            'Work Order Value: Rs ${formatIndianNumber(_woValueExclGst ?? 0)} (Excl. GST 18%)',
+                            style: pw.TextStyle(
+                                fontSize: 10, color: PdfColors.grey700),
+                          ),
+                          pw.Text(
+                            'Rs ${formatIndianNumber(_woValueInclGst ?? 0)} (Incl. GST 18%)',
+                            style: pw.TextStyle(
+                                fontSize: 10, color: PdfColors.grey700),
+                          ),
+                        ]),
+                      ],
+                    ),
+                  ),
+                  pw.SizedBox(height: 8),
+                ],
+              ),
+              // ── NEW: page numbers at bottom ───────────────────────────────
+              footer: (context) => pw.Container(
+                alignment: pw.Alignment.centerRight,
+                margin: const pw.EdgeInsets.only(top: 10),
+                child: pw.Text(
+                  'Page ${context.pageNumber} of ${context.pagesCount}',
+                  style:
+                      const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
+                ),
+              ),
+              build: (context) => [
+                pw.Table(
+                  border:
+                      pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
+                  columnWidths: {
+                    0: const pw.FixedColumnWidth(45),
+                    1: const pw.FixedColumnWidth(45),
+                    2: const pw.FixedColumnWidth(55),
+                    3: const pw.FixedColumnWidth(35),
+                    4: const pw.FixedColumnWidth(60),
+                    5: const pw.FixedColumnWidth(55),
+                    6: const pw.FixedColumnWidth(55),
+                    7: const pw.FixedColumnWidth(60),
+                    8: const pw.FixedColumnWidth(30),
+                    9: const pw.FixedColumnWidth(60),
+                    10: const pw.FixedColumnWidth(50),
+                    11: const pw.FixedColumnWidth(50),
+                    12: const pw.FixedColumnWidth(50),
+                    13: const pw.FixedColumnWidth(50),
+                    14: const pw.FixedColumnWidth(50),
+                    15: const pw.FixedColumnWidth(50),
+                    16: const pw.FixedColumnWidth(50),
+                    17: const pw.FixedColumnWidth(50),
+                    18: const pw.FixedColumnWidth(55),
+                    19: const pw.FixedColumnWidth(50),
+                    20: const pw.FixedColumnWidth(55),
+                    21: const pw.FixedColumnWidth(60),
+                    22: const pw.FixedColumnWidth(60),
+                    23: const pw.FixedColumnWidth(45),
+                    24: const pw.FixedColumnWidth(60),
+                  },
+                  children: [
+                    // ── Header row — explicitly centered ──────────────────────────
+                    pw.TableRow(
+                      decoration:
+                          const pw.BoxDecoration(color: PdfColors.grey300),
+                      children: headers.map((h) {
+                        return pw.Padding(
+                          padding: const pw.EdgeInsets.all(4),
+                          child: pw.Text(
+                            h,
+                            style: pw.TextStyle(
+                                fontWeight: pw.FontWeight.bold, fontSize: 8),
+                            textAlign: pw.TextAlign.center,
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    // ── Data rows ────────────────────────────────────────────────
+                    ...tableRows.asMap().entries.map((entry) {
+                      final rowIndex = entry.key;
+                      final row = entry.value;
+                      final isTotalRow = rowIndex == tableRows.length - 1;
+
+                      // Alignment per column index, matching your earlier cellAlignments map
+                      final alignments = <int, pw.TextAlign>{
+                        0: pw.TextAlign.left,
+                        1: pw.TextAlign.left,
+                        2: pw.TextAlign.left,
+                        3: pw.TextAlign.right,
+                        4: pw.TextAlign.right,
+                        5: pw.TextAlign.right,
+                        6: pw.TextAlign.right,
+                        7: pw.TextAlign.right,
+                        8: pw.TextAlign.right,
+                        9: pw.TextAlign.right,
+                        10: pw.TextAlign.right,
+                        11: pw.TextAlign.right,
+                        12: pw.TextAlign.right,
+                        13: pw.TextAlign.right,
+                        14: pw.TextAlign.right,
+                        15: pw.TextAlign.right,
+                        16: pw.TextAlign.right,
+                        17: pw.TextAlign.right,
+                        18: pw.TextAlign.right,
+                        19: pw.TextAlign.right,
+                        20: pw.TextAlign.right,
+                        21: pw.TextAlign.right,
+                        22: pw.TextAlign.right,
+                        23: pw.TextAlign.left,
+                        24: pw.TextAlign.right,
+                      };
+
+                      return pw.TableRow(
+                        decoration: pw.BoxDecoration(
+                          color:
+                              isTotalRow ? PdfColors.grey300 : PdfColors.white,
+                        ),
+                        children: row.asMap().entries.map((cellEntry) {
+                          final colIndex = cellEntry.key;
+                          final value = cellEntry.value;
+                          return pw.Padding(
+                            padding: const pw.EdgeInsets.all(4),
+                            child: pw.Text(
+                              value,
+                              style: pw.TextStyle(
+                                fontSize: 7,
+                                fontWeight: isTotalRow
+                                    ? pw.FontWeight.bold
+                                    : pw.FontWeight.normal,
+                              ),
+                              textAlign:
+                                  alignments[colIndex] ?? pw.TextAlign.left,
+                            ),
+                          );
+                        }).toList(),
+                      );
+                    }).toList(),
+                  ],
+                ),
+              ],
+            ),
+          );
+
+          // ── Save PDF to Downloads folder ─────────────────────────────────
+          final directory = await getDownloadsDirectory();
+          if (directory == null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Could not access Downloads folder.'),
+                backgroundColor: Colors.red,
+              ),
+            );
+            return;
+          }
+          final fileName =
+              'BillingData_${selectedCustomerId}_${selectedProjectId}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+          final filePath = '${directory.path}/$fileName';
+          final file = File(filePath);
+          await file.writeAsBytes(await pdf.save());
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('PDF saved: $fileName'),
+              backgroundColor: Colors.green,
+              action: SnackBarAction(
+                label: 'Open',
+                onPressed: () => OpenFile.open(filePath),
+              ),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to fetch billing data.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('_downloadBillingData error: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error generating PDF: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() => _isLoadingBilling = false);
+    }
+  }
+
+  Future<void> _loadBillingDataForProject(int customerId, int projectId) async {
+    debugPrint(
+        '🔵 _loadBillingDataForProject called: cust=$customerId proj=$projectId');
+    setState(() => _isLoadingBilling = true);
+
+    try {
+      final response = await http.post(
+        ApiUtils.getUri('GetSalesBillingByProject'),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "PROJID": projectId,
+          "CUSTOMERID": customerId,
+        }),
+      );
+      debugPrint('🔵 Response status: ${response.statusCode}');
+      debugPrint('🔵 Response body: ${response.body}');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        if (data['Success'] == true) {
+          final List<dynamic> list = data['Data'] ?? [];
+          debugPrint('🔵 Rows fetched: ${list.length}');
+          final entries =
+              list.map((e) => SalesBillingModel.fromJson(e)).toList();
+
+          final loadedRows = list.asMap().entries.map((mapEntry) {
+            final raw = mapEntry.value as Map<String, dynamic>;
+            final e = SalesBillingModel.fromJson(raw);
+            return PlutoRow(cells: {
+              _fBillNo: PlutoCell(value: e.billno ?? ''),
+              _fBillDesc: PlutoCell(value: e.billdesc ?? ''),
+              _fDate: PlutoCell(
+                value: e.billdate != null
+                    ? DateFormat('yyyy-MM-dd').format(e.billdate!)
+                    : '',
+              ),
+              _fRecDate: PlutoCell(
+                value: e.netrecddt != null
+                    ? DateFormat('yyyy-MM-dd').format(e.netrecddt!)
+                    : '',
+              ),
+              _fPerWork: PlutoCell(
+                  value: double.tryParse(
+                          (e.perofwork ?? '0').replaceAll('%', '').trim()) ??
+                      0.0),
+              _fWorkDone: PlutoCell(value: (e.workdoneamnt ?? 0).toDouble()),
+              _fSecAdv: PlutoCell(value: (e.secadvamnt ?? 0).toDouble()),
+              _fMobAdv: PlutoCell(value: (e.mobadvamnt ?? 0).toDouble()),
+              _fTaxable: PlutoCell(value: (e.billamnt ?? 0).toDouble()),
+              _fGST: PlutoCell(value: (e.gstper ?? 18).toDouble()),
+              _fTotBill: PlutoCell(value: (e.billtotamnt ?? 0).toDouble()),
+              _fTDS: PlutoCell(value: (e.tdsamnt ?? 0).toDouble()),
+              _fTDSCGST: PlutoCell(value: (e.tdscgstamnt ?? 0).toDouble()),
+              _fTDSSGST: PlutoCell(value: (e.tdssgstamnt ?? 0).toDouble()),
+              _fSecDep: PlutoCell(value: (e.secdepamnt ?? 0).toDouble()),
+              _fLabCess: PlutoCell(value: (e.labcessamnt ?? 0).toDouble()),
+              _fMobInt: PlutoCell(value: (e.mobintamnt ?? 0).toDouble()),
+              _fOthDed: PlutoCell(value: (e.dedamnt ?? 0).toDouble()),
+              _fWithheld: PlutoCell(value: (e.whamnt ?? 0).toDouble()),
+              _fMobAdvRec: PlutoCell(value: (e.mobadvrecamnt ?? 0).toDouble()),
+              _fWhRelease: PlutoCell(value: (e.whrlseamnt ?? 0).toDouble()),
+              _fTotDed: PlutoCell(value: (e.totdedamnt ?? 0).toDouble()),
+              _fNetRec: PlutoCell(value: (e.netrecamnt ?? 0).toDouble()),
+              _fNetAmtRecd: PlutoCell(value: (e.recamnt ?? 0).toDouble()),
+              _fOutstanding: PlutoCell(value: (e.outstandamnt ?? 0).toDouble()),
+              _fAttachment: PlutoCell(value: e.sbfname ?? ''),
+              'col25FileName': PlutoCell(value: e.sbfname ?? ''),
+              'col25Base64': PlutoCell(value: ''),
+              'col25FileType': PlutoCell(value: e.sbftype ?? ''),
+              'colSBNO': PlutoCell(value: e.sbno ?? 0),
+              'col6Remark': PlutoCell(value: e.secadvremks ?? ''),
+              'col7Remark': PlutoCell(value: e.mobadvremks ?? ''),
+              'col17Remark': PlutoCell(value: e.othdedremks ?? ''),
+              'col18Remark': PlutoCell(value: e.whremks ?? ''),
+              'col19Remark': PlutoCell(value: e.mobadvrecremks ?? ''),
+              'col20Remark': PlutoCell(value: e.whrlseremks ?? ''),
+              'col23Remark': PlutoCell(value: e.netrecdremks ?? ''),
+            });
+          }).toList();
+
+          setState(() {
+            _billingList = entries;
+            rows = loadedRows;
+            _existingRowKeys.clear();
+            for (final row in loadedRows) {
+              _existingRowKeys.add(row.key.toString());
+            }
+          });
+
+          if (stateManager != null) {
+            stateManager!.removeAllRows();
+            stateManager!.appendRows(loadedRows);
+            for (final row in stateManager!.rows) {
+              _calculateRowTotals(row);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('_loadBillingDataForProject error: $e');
+    } finally {
+      setState(() => _isLoadingBilling = false);
+    }
   }
 }
 
@@ -2279,375 +3074,564 @@ class BillingDownloadService {
   }
 }
 
-/*@override
-  Widget _build(BuildContext context) {
-    final _scrollController = ScrollController();
-    final _formKey = GlobalKey<FormState>();
-    final isViewOnly = widget.isReadOnly == true;
+/*void _calculateRowTotals(PlutoRow row) {
+    double _cell(String field) {
+      final v = row.cells[field]?.value;
+      if (v == null) return 0;
+      return double.tryParse(v.toString()) ?? 0;
+    }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Billing Update'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            tooltip: 'Add Row',
-            onPressed: () {
-              // Check if customer and project are selected
-              if (selectedCustomerId == null || selectedProjectId == null) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Please select Customer and Site first.'),
-                    backgroundColor: Colors.orange,
-                  ),
-                );
-                return;
-              }
-              addNewRow();
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.list_alt),
-            tooltip: 'View Billing List',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ViewBillingScreen(
-                    isSuperAdmin: widget.isSuperAdmin,
-                  ),
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-      body: Form(
-        key: _formKey,
-        child: Column(
-          children: [
-            /// Fixed height section for the search fields
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: isViewOnly
-                        ? TextFormField(
-                            controller: customerController,
-                            decoration: _inputDecoration("Customer Name"),
-                            readOnly: true,
-                            enabled: false,
-                          )
-                        : Autocomplete<ChecklistCustomer>(
-                            displayStringForOption: (option) =>
-                                "${option.customerId} - ${option.companyName}",
-                            optionsBuilder:
-                                (TextEditingValue textEditingValue) {
-                              if (textEditingValue.text.isEmpty) {
-                                return customerList;
-                              }
-                              return customerList.where((customer) {
-                                return customer.companyName
-                                        .toLowerCase()
-                                        .contains(textEditingValue.text
-                                            .toLowerCase()) ||
-                                    customer.customerId
-                                        .toString()
-                                        .contains(textEditingValue.text);
-                              });
-                            },
-                            onSelected: (ChecklistCustomer selection) {
-                              final value =
-                                  "${selection.customerId} - ${selection.companyName}";
+    void _set(String field, double value) {
+      // ← directly set cell value without going through stateManager
+      row.cells[field]?.value = value.roundToDouble();
+    }
 
-                              customerController.text = value;
+    // ── Step 1: Work Done ────────────────────────────────────────────────────
+    final woValue = _woValueInclGst ?? 0.0;
+    final perWork = _cell(_fPerWork);
+    final workDone =
+        woValue > 0 && perWork > 0 ? (woValue * perWork) / 100 : 0.0;
+    _set(_fWorkDone, workDone);
 
-                              setState(() {
-                                selectedCustomerId = selection.customerId;
-                                selectedProjectId = null;
-                                siteController.clear();
-                                // Clear rows when customer changes
-                                rows = [];
-                                _billingList = [];
-                                stateManager?.removeAllRows(); // ← clear grid
-                              });
+    // ── Step 2: Taxable Value ─────────────────────────────────────────────────
+    final secAdv = _cell(_fSecAdv);
+    final mobAdv = _cell(_fMobAdv);
+    final taxable = workDone + secAdv + mobAdv;
+    _set(_fTaxable, taxable);
 
-                              loadProjects(selection.customerId);
-                            },
-                            fieldViewBuilder: (
-                              context,
-                              controller,
-                              focusNode,
-                              onFieldSubmitted,
-                            ) {
-                              controller.text = customerController.text;
-                              return TextFormField(
-                                controller: controller,
-                                focusNode: focusNode,
-                                decoration: InputDecoration(
-                                  labelText: "Customer Name",
-                                  hintText: "Search Customer",
-                                  border: const OutlineInputBorder(),
-                                  suffixIcon: controller.text.isNotEmpty
-                                      ? IconButton(
-                                          icon: const Icon(Icons.clear),
-                                          onPressed: () {
-                                            controller.clear();
-                                            customerController.clear();
-                                            setState(() {
-                                              selectedCustomerId = null;
-                                              selectedProjectId = null;
-                                              siteController.clear();
-                                              rows = [];
-                                            });
-                                          },
-                                        )
-                                      : null,
-                                ),
-                                autovalidateMode:
-                                    AutovalidateMode.onUserInteraction,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                maxLines: null,
-                              );
-                            },
-                          ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: isViewOnly
-                        ? TextFormField(
-                            controller: siteController,
-                            decoration: _inputDecoration("Site Name"),
-                            readOnly: true,
-                            enabled: false,
-                          )
-                        : Autocomplete<Project>(
-                            displayStringForOption: (option) =>
-                                "${option.projectId} - ${option.projectName}",
-                            optionsBuilder:
-                                (TextEditingValue textEditingValue) {
-                              if (textEditingValue.text.isEmpty) {
-                                return projectList;
-                              }
-                              return projectList.where((project) {
-                                return project.projectName
-                                        .toLowerCase()
-                                        .contains(textEditingValue.text
-                                            .toLowerCase()) ||
-                                    project.projectId
-                                        .toString()
-                                        .contains(textEditingValue.text);
-                              });
-                            },
-                            onSelected: (Project selection) {
-                              siteController.text =
-                                  "${selection.projectId} - ${selection.projectName}";
+    // ── Step 3: TDS CGST & SGST = 1% of Work Done ────────────────────────────
+    final tdsCGST = workDone * 0.01;
+    final tdsSGST = workDone * 0.01;
+    _set(_fTDSCGST, tdsCGST);
+    _set(_fTDSSGST, tdsSGST);
 
-                              if (selectedCustomerId != null) {
-                                // ✅ FETCH WORK ORDER VALUE HERE
-                                fetchWorkOrderValue(
-                                    selectedCustomerId!, selection.projectId);
-                              }
-                              setState(() {
-                                selectedProjectId = selection.projectId;
-                                rows = []; // ← clear first
-                                stateManager
-                                    ?.removeAllRows(); // ← clear grid too
-                              });
+    // ── Step 4: GST Amount & Total Bill Amount ────────────────────────────────
+    final gstPct = _cell(_fGST);
+    double totBill = 0.0;
+    if (taxable > 0 && gstPct > 0) {
+      final gstAmt = (taxable * gstPct / 100).roundToDouble();
+      totBill = taxable.roundToDouble() + gstAmt;
+      _set(_fTotBill, totBill);
+    } else {
+      _set(_fTotBill, 0.0);
+    }
 
-                              _fetchAndLoadBillingEntries(); // ← load billing data into grid
-                            },
-                            fieldViewBuilder: (
-                              context,
-                              controller,
-                              focusNode,
-                              onFieldSubmitted,
-                            ) {
-                              controller.text = siteController.text;
-                              return TextFormField(
-                                controller: controller,
-                                focusNode: focusNode,
-                                decoration: InputDecoration(
-                                  labelText: "Site Name",
-                                  hintText: "Search Site",
-                                  border: const OutlineInputBorder(),
-                                  suffixIcon: controller.text.isNotEmpty
-                                      ? IconButton(
-                                          icon: const Icon(Icons.clear),
-                                          onPressed: () {
-                                            controller.clear();
-                                            siteController.clear();
-                                            setState(() {
-                                              selectedProjectId = null;
-                                              rows = [];
-                                            });
-                                          },
-                                        )
-                                      : null,
-                                ),
-                                autovalidateMode:
-                                    AutovalidateMode.onUserInteraction,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                maxLines: null,
-                              );
-                            },
-                          ),
-                  ),
-                ],
-              ),
-            ),
+    // ── Step 5: Labour Cess = 1% of Total Bill Amount ────────────────────────
+    final labCess = (totBill * 0.01).roundToDouble();
+    _set(_fLabCess, labCess);
 
-            /// Work Order Value Field
-            Row(children: [
-              Expanded(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'WO Value:',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: AppColors.primaryLight,
+    // ── Step 6: TDS = 2% of Taxable Value ────────────────────────────────────
+    final tds = taxable > 0 ? (taxable * 0.02).roundToDouble() : 0.0;
+    _set(_fTDS, tds);
+
+    // ── Step 7: Security Deposit = 5% of Taxable Value ───────────────────────
+    final secDep = taxable > 0 ? (taxable * 0.05).roundToDouble() : 0.0;
+    _set(_fSecDep, secDep);
+
+    // ── Step 8: Total Deduction ───────────────────────────────────────────────
+    final mobInt = _cell(_fMobInt);
+    final othDed = _cell(_fOthDed);
+    final withheld = _cell(_fWithheld);
+    final mobAdvRec = _cell(_fMobAdvRec);
+    final whRelease = _cell(_fWhRelease);
+
+    final totDed = tds +
+        tdsCGST +
+        tdsSGST +
+        secDep +
+        labCess +
+        mobInt +
+        othDed +
+        withheld +
+        mobAdvRec -
+        whRelease;
+    _set(_fTotDed, totDed);
+
+    // ── Step 9: Net Receivable ────────────────────────────────────────────────
+    final netRec = totBill > 0 ? (totBill - totDed) : 0.0;
+    _set(_fNetRec, netRec);
+
+    // ── Step 10: Outstanding ──────────────────────────────────────────────────
+    final netAmtRecd = _cell(_fNetAmtRecd);
+    final outstanding = netRec - netAmtRecd;
+    _set(_fOutstanding, outstanding);
+
+    // ── Force grid UI refresh ─────────────────────────────────────────────────
+    stateManager?.notifyListeners(); // ← this is the key fix
+  }*/
+
+/*void _initializeGrid() {
+    final List<String> columnNames = [
+      'Bill No',
+      'Date',
+      'Bill Description',
+      '% of work',
+      'Work Done value',
+      'Secure Advance',
+      'Mobilisation advance',
+      'Taxable value',
+      'GST',
+      'Total bill amount',
+      'TDS',
+      'TDS CGST',
+      'TDS SGST',
+      'Security deposit',
+      'Labour Cess',
+      'Mobilization Interest',
+      'Other Deduction',
+      'Withheld',
+      'Mobilization Advance Recovery',
+      'Withheld release',
+      'Total Deduction',
+      'Net receivable',
+      'Net amount received',
+      'Date',
+      'Outstanding',
+      'Attachment'
+    ];
+
+    // ── Read-only (auto-calculated) columns ──────────────────────────────────
+    final Set<String> readOnlyFields = {
+      'col5', // Work Done value
+      'col8', // Taxable value
+      'col10', // Total bill amount
+      'col11', // TDS
+      'col12', // TDS CGST
+      'col13', // TDS SGST
+      'col14', // Security deposit
+      'col15', // Labour Cess
+      'col21', // Total Deduction
+      'col22', // Net receivable
+      'col25', // Outstanding
+    };
+
+    // ── Percent columns ───────────────────────────────────────────────────────
+    final Set<String> percentFields = {
+      'col4',
+      'col9',
+    };
+
+    // ── Number columns ────────────────────────────────────────────────────────
+    final Set<String> numberFields = {
+      'col5',
+      'col6',
+      'col7',
+      'col8',
+      'col10',
+      'col11',
+      'col12',
+      'col13',
+      'col14',
+      'col15',
+      'col16',
+      'col17',
+      'col18',
+      'col19',
+      'col20',
+      'col21',
+      'col22',
+      'col23',
+      'col25',
+      'col26',
+    };
+
+    columns = List.generate(columnNames.length, (index) {
+      final title = columnNames[index];
+      final field = 'col${index + 1}';
+      final isReadOnly = readOnlyFields.contains(field);
+
+      // ── Attachment column ─────────────────────────────────────────────────
+      if (title == 'Attachment') {
+        return PlutoColumn(
+          title: title,
+          field: field,
+          type: PlutoColumnType.text(),
+          enableEditingMode: false,
+          readOnly: false,
+          width: 120,
+          renderer: (ctx) {
+            final cellValue = ctx.cell.value;
+            final hasAttachment = cellValue != null &&
+                cellValue.toString().trim().isNotEmpty &&
+                cellValue.toString().trim() != 'null'; // ✅ extra safety
+
+            return Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (hasAttachment)
+                  InkWell(
+                    onTap: () => _showAttachmentDialog(ctx.row, field),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade100,
+                        borderRadius: BorderRadius.circular(4),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    if (_isLoading)
-                      const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                        ),
-                      )
-                    else
-                      Row(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
+                          Icon(Icons.attach_file,
+                              size: 16, color: Colors.green.shade700),
+                          const SizedBox(width: 4),
                           Text(
-                            woValueController.text.isEmpty
-                                ? 'Select project to fetch'
-                                : woValueController.text,
+                            'View',
                             style: TextStyle(
-                              fontSize: 14,
+                              fontSize: 12,
+                              color: Colors.green.shade700,
                               fontWeight: FontWeight.w500,
-                              color: woValueController.text.contains('Error') ||
-                                      woValueController.text ==
-                                          'No data available'
-                                  ? Colors.red
-                                  : woValueController.text.isEmpty
-                                      ? Colors.grey.shade500
-                                      : Colors.blue.shade700,
                             ),
                           ),
-                          if (woValueController.text.isNotEmpty &&
-                              woValueController.text != 'No data available' &&
-                              woValueController.text != 'Error loading' &&
-                              woValueController.text != 'Error' &&
-                              woValueController.text != 'Loading...')
-                            IconButton(
-                              icon: const Icon(Icons.info_outline, size: 18),
-                              onPressed: () {
-                                if (_woValueInclGst != null) {
-                                  _showWODetailsDialog(context);
-                                }
-                              },
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                              tooltip: 'View details',
-                            ),
                         ],
                       ),
-                  ],
-                ),
-              ),
-            ]),
-            const SizedBox(height: 16),
+                    ),
+                  )
+                else
+                  InkWell(
+                    onTap: () => _pickAndAttachFile(ctx.row, field),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: Colors.blue.shade200),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.add,
+                              size: 16, color: Colors.blue.shade700),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Attach',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.blue.shade700,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                if (hasAttachment)
+                  IconButton(
+                    icon:
+                        Icon(Icons.close, size: 16, color: Colors.red.shade400),
+                    onPressed: () => _removeAttachment(ctx.row, field),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+              ],
+            );
+          },
+        );
+      }
 
-            /// Grid with "Add Row" button when empty
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: rows.isEmpty
-                    ? _buildEmptyState()
-                    : PlutoGrid(
-                        columns: columns,
-                        rows: rows,
-                        onLoaded: (PlutoGridOnLoadedEvent event) {
-                          stateManager = event.stateManager;
-                          stateManager!.setShowColumnFilter(true);
-                        },
-                        onRowDoubleTap: (PlutoGridOnRowDoubleTapEvent event) {
-                          debugPrint('Row double tapped');
-                        },
-                        onChanged: _onGridChanged,
-                        onSelected: (PlutoGridOnSelectedEvent event) async {
-                          if (event.cell != null &&
-                              event.cell!.column.title == 'Date') {
-                            await selectDateForCell(
-                                event.row!, event.cell!.column);
-                          }
-                        },
-                        configuration: PlutoGridConfiguration(
-                          style: PlutoGridStyleConfig(
-                            rowHeight: 45,
-                            columnHeight: 50,
-                            gridBorderRadius: BorderRadius.circular(8),
-                          ),
-                          scrollbar: const PlutoGridScrollbarConfig(
-                            isAlwaysShown: true,
-                          ),
+      // ── Date columns ─────────────────────────────────────────────────────
+      if (title == 'Date') {
+        return PlutoColumn(
+          title: title,
+          field: field,
+          type: PlutoColumnType.date(),
+          enableEditingMode: !isReadOnly,
+          readOnly: isReadOnly,
+          width: 150,
+          backgroundColor: isReadOnly ? const Color(0xFFF1F5F9) : null,
+          // ✅ No InkWell - just display text
+          renderer: (ctx) {
+            return Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                ctx.cell.value == null || ctx.cell.value.toString().isEmpty
+                    ? ''
+                    : ctx.cell.value.toString(),
+                style: const TextStyle(fontSize: 13),
+              ),
+            );
+          },
+        );
+      }
+
+      // ── Percent columns ───────────────────────────────────────────────────
+      if (percentFields.contains(field)) {
+        return PlutoColumn(
+          title: title,
+          field: field,
+          type: PlutoColumnType.number(
+            negative: false,
+            format: '#,###.##',
+          ),
+          enableEditingMode: !isReadOnly,
+          readOnly: isReadOnly,
+          width: 150,
+          backgroundColor: isReadOnly ? const Color(0xFFF1F5F9) : null,
+          formatter: (value) {
+            if (value == null || value.toString().isEmpty) return '';
+            final num = double.tryParse(value.toString()) ?? 0;
+            if (num == 0) return '';
+            return num == num.truncateToDouble() ? '${num.toInt()}%' : '$num%';
+          },
+          footerRenderer: field == 'col4'
+              ? (rendererContext) {
+                  return PlutoAggregateColumnFooter(
+                    rendererContext: rendererContext,
+                    type: PlutoAggregateColumnType.sum,
+                    format: '#,###.##',
+                    alignment: Alignment.centerRight,
+                    titleSpanBuilder: (text) => [
+                      TextSpan(
+                        text: text.isEmpty ? '' : '$text%',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.indigo.shade900,
                         ),
                       ),
-              ),
-            ),
-
-            // ── After PlutoGrid widget ─────────────────────────────────────────────────
-            const SizedBox(height: 16),
-            if (rows.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [AppColors.primary, AppColors.primaryDark],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(10),
-                    boxShadow: const [
-                      BoxShadow(
-                          color: Colors.black26,
-                          blurRadius: 5,
-                          offset: Offset(2, 4))
                     ],
-                  ),
-                  child: InkWell(
-                    onTap: _submitAllRows,
-                    borderRadius: BorderRadius.circular(10),
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 15),
-                      child: Center(
-                        child: Text(
-                          'Submit',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ),
+                  );
+                }
+              : null,
+        );
+      }
+
+      // ── Number columns ────────────────────────────────────────────────────
+
+      if (remarkConfig.containsKey(field)) {
+        final config = remarkConfig[field]!;
+
+        return PlutoColumn(
+          title: title,
+          field: field,
+          type: PlutoColumnType.number(),
+          width: 170,
+          enableEditingMode: true,
+          readOnly: false,
+          renderer: (ctx) {
+            // ✅ Only wrap the ICON in InkWell, not the whole row
+            return Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      // ✅ Tap on text area → enter edit mode
+                      stateManager!.setCurrentCell(ctx.cell, ctx.rowIdx);
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        stateManager!.setEditing(true);
+                      });
+                    },
+                    child: Text(
+                      ctx.cell.value == null || ctx.cell.value == 0
+                          ? ''
+                          : formatIndianNumber(
+                              (ctx.cell.value as num).toDouble(),
+                            ),
                     ),
                   ),
                 ),
-              ),
-          ],
-        ),
+                InkWell(
+                  // ✅ Tap on icon → open dialog only
+                  onTap: () {
+                    _showAmountRemarksDialog(
+                      row: ctx.row,
+                      amountField: field,
+                      remarksField: config['remark']!,
+                      title: config['title']!,
+                    );
+                  },
+                  child: const Icon(
+                    Icons.edit_note,
+                    color: Colors.green,
+                    size: 20,
+                  ),
+                ),
+              ],
+            );
+          },
+          footerRenderer: (rendererContext) {
+            return PlutoAggregateColumnFooter(
+              rendererContext: rendererContext,
+              type: PlutoAggregateColumnType.sum,
+              format: '#,###',
+              alignment: Alignment.centerRight,
+              titleSpanBuilder: (text) => [
+                TextSpan(
+                  text: text.isEmpty ? '' : '₹ $text',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Colors.indigo.shade900),
+                ),
+              ],
+            );
+          },
+        );
+      }
+
+      if (numberFields.contains(field)) {
+        return PlutoColumn(
+          title: title,
+          field: field,
+          type: PlutoColumnType.number(
+            negative: true,
+            format: '#,###',
+          ),
+          enableEditingMode: !isReadOnly,
+          readOnly: isReadOnly,
+          width: 150,
+          backgroundColor: isReadOnly ? const Color(0xFFF1F5F9) : null,
+          renderer: isReadOnly
+              ? (ctx) => Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      ctx.cell.value == 0 || ctx.cell.value == null
+                          ? ''
+                          : '₹ ${formatIndianNumber((ctx.cell.value as num).toDouble())}',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.indigo.shade700,
+                      ),
+                    ),
+                  )
+              : (ctx) => Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      ctx.cell.value == 0 || ctx.cell.value == null
+                          ? ''
+                          : formatIndianNumber(
+                              (ctx.cell.value as num).toDouble()),
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+          // ── NEW: total row at bottom ───────────────────────────────────────
+          footerRenderer: (rendererContext) {
+            return PlutoAggregateColumnFooter(
+              rendererContext: rendererContext,
+              type: PlutoAggregateColumnType.sum,
+              format: '#,##,###',
+              alignment: Alignment.centerRight,
+              titleSpanBuilder: (text) => [
+                TextSpan(
+                  text: text.isEmpty ? '' : '₹ $text',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.indigo.shade900,
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      }
+
+      // ── Text columns ──────────────────────────────────────────────────────
+      return PlutoColumn(
+        title: title,
+        field: field,
+        type: PlutoColumnType.text(),
+        enableEditingMode: !isReadOnly,
+        readOnly: isReadOnly,
+        width: 150,
+        // ── NEW: show "TOTAL" label only on the Bill Description column ────
+        footerRenderer: title == 'Bill Description'
+            ? (rendererContext) {
+                return const Align(
+                  alignment: Alignment.centerRight,
+                  child: Padding(
+                    padding: EdgeInsets.only(right: 8),
+                    child: Text(
+                      'TOTAL',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                      ),
+                    ),
+                  ),
+                );
+              }
+            : null,
+      );
+    });
+
+    columns.addAll([
+      PlutoColumn(
+        title: 'SBNO',
+        field: 'colSBNO',
+        type: PlutoColumnType.number(),
+        hide: true,
       ),
-    );
+      PlutoColumn(
+        title: 'SecAdvRemark',
+        field: 'col6Remark',
+        type: PlutoColumnType.text(),
+        hide: true,
+      ),
+      PlutoColumn(
+        title: 'MobAdvRemark',
+        field: 'col7Remark',
+        type: PlutoColumnType.text(),
+        hide: true,
+      ),
+      PlutoColumn(
+        title: 'OtherDedRemark',
+        field: 'col17Remark',
+        type: PlutoColumnType.text(),
+        hide: true,
+      ),
+      PlutoColumn(
+        title: 'WithheldRemark',
+        field: 'col18Remark',
+        type: PlutoColumnType.text(),
+        hide: true,
+      ),
+      PlutoColumn(
+        title: 'MobAdvRecoveryRemark',
+        field: 'col19Remark',
+        type: PlutoColumnType.text(),
+        hide: true,
+      ),
+      PlutoColumn(
+        title: 'WithheldReleaseRemark',
+        field: 'col20Remark',
+        type: PlutoColumnType.text(),
+        hide: true,
+      ),
+      PlutoColumn(
+        title: 'TotalDeductionRemark',
+        field: 'col21Remark',
+        type: PlutoColumnType.text(),
+        hide: true,
+      ),
+      PlutoColumn(
+        title: 'NetAmountReceivedRemark',
+        field: 'col23Remark',
+        type: PlutoColumnType.text(),
+        hide: true,
+      ),
+
+      // ── Add file columns too ───────────────────────────────────────────
+      PlutoColumn(
+        title: 'FileName',
+        field: 'col25FileName',
+        type: PlutoColumnType.text(),
+        hide: true,
+      ),
+      PlutoColumn(
+        title: 'FileBase64',
+        field: 'col25Base64',
+        type: PlutoColumnType.text(),
+        hide: true,
+      ),
+      PlutoColumn(
+        title: 'FileType',
+        field: 'col25FileType',
+        type: PlutoColumnType.text(),
+        hide: true,
+      ),
+    ]);
+
+    rows = [];
   }*/

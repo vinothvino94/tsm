@@ -17,6 +17,8 @@ import 'package:universal_html/html.dart' as html;
 import '../../services/pdfgeneratorservice.dart';
 import 'package:path/path.dart' as p;
 
+import 'data_entry_screen.dart';
+
 class OverAllSummaryScreen extends StatefulWidget {
   const OverAllSummaryScreen({super.key});
 
@@ -43,6 +45,14 @@ class _OverAllSummaryScreenState extends State<OverAllSummaryScreen> {
   bool _customerControllerInitialized = false;
   bool _siteControllerInitialized = false;
   bool _isDownloadingAll = false;
+
+  String? selectedModule = 'Billing';
+
+  final List<String> moduleList = [
+    'Billing',
+    'Design',
+    'Project Control',
+  ];
 
   @override
   void initState() {
@@ -289,6 +299,30 @@ class _OverAllSummaryScreenState extends State<OverAllSummaryScreen> {
               ),
               const SizedBox(height: 16),
 
+              /// Module Dropdown
+              DropdownButtonFormField<String>(
+                value: selectedModule,
+                decoration: const InputDecoration(
+                  labelText: 'Department',
+                  border: OutlineInputBorder(),
+                  contentPadding:
+                      EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                ),
+                items: moduleList.map((module) {
+                  return DropdownMenuItem<String>(
+                    value: module,
+                    child: Text(module),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  setState(() {
+                    selectedModule = value;
+                  });
+                },
+              ),
+
+              const SizedBox(height: 16),
+
               ///Generate Button
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -399,9 +433,6 @@ class _OverAllSummaryScreenState extends State<OverAllSummaryScreen> {
         DataColumn(
             label: Text('Outstanding',
                 style: TextStyle(fontWeight: FontWeight.bold))),
-        DataColumn(
-            label:
-                Text('Print', style: TextStyle(fontWeight: FontWeight.bold))),
       ],
       rows: summaryList.asMap().entries.map((entry) {
         final index = entry.key;
@@ -412,29 +443,28 @@ class _OverAllSummaryScreenState extends State<OverAllSummaryScreen> {
             DataCell(
               _ProjectNameCell(
                 projectName: item.projectName ?? '',
-                onTap: () async {
-                  showDialog(
-                    context: context,
-                    barrierDismissible: false,
-                    builder: (context) => const Center(
-                      child: CircularProgressIndicator(),
+                onTap: () {
+                  // ── Look up real customer name from already-loaded customerList ────
+                  final matchedCustomer = customerList.firstWhere(
+                    (c) => c.customerId == item.customerId,
+                    orElse: () => ChecklistCustomer(
+                        customerId: item.customerId ?? 0, companyName: ''),
+                  );
+
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => DataEntryScreen(
+                        isReadOnly: true,
+                        initialCustomerId: item.customerId,
+                        initialProjectId: item.projectId,
+                        initialCustomerName:
+                            '${matchedCustomer.customerId} - ${matchedCustomer.companyName}',
+                        initialProjectName: item.projectName ??
+                            '', // ← also fixed: no duplicate prefix
+                      ),
                     ),
                   );
-                  try {
-                    final bills = await _fetchBillsForProject(item.projectId!);
-                    await _showProjectDetailsDialog(item, indianFormat, bills);
-                  } catch (e) {
-                    debugPrint('Error: $e');
-                    if (mounted) {
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Error: $e'),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
-                  }
                 },
               ),
             ),
@@ -442,15 +472,6 @@ class _OverAllSummaryScreenState extends State<OverAllSummaryScreen> {
             DataCell(Text(indianFormat.format(item.billed ?? 0))),
             DataCell(Text(indianFormat.format(item.recamnt ?? 0))),
             DataCell(Text(indianFormat.format(item.balanceAmnt ?? 0))),
-            DataCell(
-              IconButton(
-                icon: const Icon(Icons.print),
-                onPressed: () async {
-                  final bills = await _fetchBillsForProject(item.projectId!);
-                  await _printSingleRow(item, indianFormat, bills);
-                },
-              ),
-            ),
           ],
         );
       }).toList(),
