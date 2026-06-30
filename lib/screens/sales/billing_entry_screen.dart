@@ -1,39 +1,50 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:csv/csv.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_pdfview/flutter_pdfview.dart';
+
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
+import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:tsm/screens/sales/view_billing_screen.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:permission_handler/permission_handler.dart';
+
+import 'package:pluto_grid/pluto_grid.dart';
+import 'package:share_plus/share_plus.dart';
+
 import '../../api/api_utils.dart';
 import '../../colors/app_colors.dart';
 import '../../models/project.dart';
 import '../../services/prefrence_helper.dart';
-import '../../widgets/crop_screen.dart';
-import 'dart:io' as io;
-import 'package:universal_html/html.dart' as html;
-import 'package:path/path.dart' as path;
-import 'package:math_expressions/math_expressions.dart';
+
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:path_provider/path_provider.dart';
+
+import 'dart:io';
 
 class BillingEntryScreen extends StatefulWidget {
-  final SalesStagelistModel? stagelistData;
-  final SalesBillingModel? billingData;
+  final bool isSuperAdmin;
   final bool? isReadOnly;
   final VoidCallback? onDataSaved;
-  final bool isSuperAdmin;
+  final int? initialCustomerId;
+  final int? initialProjectId;
+  final String? initialCustomerName;
+  final String? initialProjectName;
+
   const BillingEntryScreen({
     super.key,
-    this.stagelistData,
-    this.billingData,
+    this.isSuperAdmin = false,
     this.isReadOnly = false,
     this.onDataSaved,
-    this.isSuperAdmin = false,
+    this.initialCustomerId,
+    this.initialProjectId,
+    this.initialCustomerName,
+    this.initialProjectName,
   });
 
   @override
@@ -41,165 +52,179 @@ class BillingEntryScreen extends StatefulWidget {
 }
 
 class _BillingEntryScreenState extends State<BillingEntryScreen> {
-  final _scrollController = ScrollController();
-  final _formKey = GlobalKey<FormState>();
-  TextEditingController customerController = TextEditingController();
-  TextEditingController siteController = TextEditingController();
-  TextEditingController stageController = TextEditingController();
-  TextEditingController amountController = TextEditingController();
-  TextEditingController secamountController = TextEditingController();
-  TextEditingController secadvrmksController = TextEditingController();
-  TextEditingController mobamountController = TextEditingController();
-  TextEditingController otherdedamountController = TextEditingController();
-  TextEditingController whamountController = TextEditingController();
-  TextEditingController whrlamountController = TextEditingController();
-  TextEditingController mobadvrecamountController = TextEditingController();
-  TextEditingController mobadvrmksController = TextEditingController();
-  TextEditingController otherdedrmksController = TextEditingController();
-  TextEditingController whrmksController = TextEditingController();
-  TextEditingController whrlrmksController = TextEditingController();
-  TextEditingController netamntrecdrmksController = TextEditingController();
-  TextEditingController mobadvrecrmksController = TextEditingController();
-  TextEditingController totbillamountController = TextEditingController();
-  TextEditingController itController = TextEditingController();
-  TextEditingController otherDeductionController = TextEditingController();
-  TextEditingController mobintController = TextEditingController();
-  TextEditingController whController = TextEditingController();
-  TextEditingController whrlController = TextEditingController();
-  TextEditingController netamntrecController = TextEditingController();
-  TextEditingController totdedController = TextEditingController();
-  TextEditingController netrecController = TextEditingController();
-  TextEditingController osController = TextEditingController();
-  TextEditingController retentionController = TextEditingController();
-  TextEditingController gstController = TextEditingController();
-  TextEditingController invnoController = TextEditingController();
-  TextEditingController descController = TextEditingController();
-  TextEditingController gstAmountController = TextEditingController();
-  TextEditingController itAmountController = TextEditingController();
-  TextEditingController secdepositController = TextEditingController();
-  TextEditingController woValueController = TextEditingController();
-  TextEditingController WorkDoneController = TextEditingController();
-  TextEditingController percentWorkController = TextEditingController();
-  TextEditingController _secTotalController = TextEditingController();
-  TextEditingController _mobTotalController = TextEditingController();
-  TextEditingController _otherdedTotalController = TextEditingController();
-  TextEditingController _whTotalController = TextEditingController();
-  TextEditingController _whrlTotalController = TextEditingController();
-  TextEditingController _netamntrecdTotalController = TextEditingController();
-  TextEditingController _mobadvrecTotalController = TextEditingController();
-  TextEditingController TDSCGSTController = TextEditingController();
-  TextEditingController TDSSGSTController = TextEditingController();
-  TextEditingController labcessController = TextEditingController();
-  final TextEditingController stageRemarksController = TextEditingController();
-  late final TextEditingController _invDateController = TextEditingController();
-  late final TextEditingController _recDateController = TextEditingController();
-
+  late List<PlutoColumn> columns;
+  late List<PlutoRow> rows;
   List<ChecklistCustomer> customerList = [];
   List<Project> projectList = [];
   int? selectedCustomerId;
   int? selectedProjectId;
-  int empCode = 0;
-  String empName = '';
-  String? selectedstage;
-  String? selectedstageId;
-  List<SalesStagelistModel> stageList = [];
-  Map<String, String> dynamicStages = {};
-  bool isLoadingStages = false;
-  DateTime? invDate, recDate;
-  List<PlatformFile> _attachedFiles = [];
-  List<String> _existingFiles = [];
-  List<String> _removedFiles = [];
 
-  bool _isLoading = false;
+  PlutoGridStateManager? stateManager;
+  TextEditingController customerController = TextEditingController();
+  TextEditingController siteController = TextEditingController();
+  TextEditingController woValueController = TextEditingController();
+
+  // ── Column field name constants ───────────────────────────────────────────
+  static const String _fBillNo = 'col1';
+  static const String _fDate = 'col2';
+  static const String _fBillDesc = 'col3';
+  static const String _fPerWork = 'col4';
+  static const String _fWorkDone = 'col5';
+  static const String _fSecAdv = 'col6';
+  static const String _fMobAdv = 'col7';
+  static const String _fTaxable = 'col8';
+  static const String _fGST = 'col9';
+  static const String _fTotBill = 'col10';
+  static const String _fTDS = 'col11';
+  static const String _fTDSCGST = 'col12';
+  static const String _fTDSSGST = 'col13';
+  static const String _fSecDep = 'col14';
+  static const String _fLabCess = 'col15';
+  static const String _fMobInt = 'col16';
+  static const String _fOthDed = 'col17';
+  static const String _fWithheld = 'col18';
+  static const String _fMobAdvRec = 'col19';
+  static const String _fWhRelease = 'col20';
+  static const String _fTotDed = 'col21';
+  static const String _fNetRec = 'col22';
+  static const String _fNetAmtRecd = 'col23';
+  static const String _fRecDate = 'col24';
+  static const String _fOutstanding = 'col25';
+  static const String _fAttachment = 'col26';
   double? _woValueInclGst;
   double? _woValueExclGst;
-  List<SecureAdvanceEntry> _secureAdvanceEntries = [];
-  List<SecureAdvanceEntry> _mobAdvanceEntries = [];
-  List<SecureAdvanceEntry> _otherdedEntries = [];
-  List<SecureAdvanceEntry> _whEntries = [];
-  List<SecureAdvanceEntry> _mobadvrecEntries = [];
-  List<SecureAdvanceEntry> _whrlEntries = [];
-  List<NetAmountRecd> _netamntrecdEntries = [];
-  List<Map<String, String>> _stageEntries = [];
+  bool _isLoading = false;
+  int empCode = 0;
+  String empName = '';
+
+  final Map<String, String> remarkFields = {
+    _fSecAdv: 'col6Remark',
+    _fMobAdv: 'col7Remark',
+    _fOthDed: 'col17Remark',
+    _fWithheld: 'col18Remark',
+    _fMobAdvRec: 'col19Remark',
+    _fWhRelease: 'col20Remark',
+    _fNetAmtRecd: 'col23Remark',
+  };
+  final Map<String, Map<String, String>> remarkConfig = {
+    _fSecAdv: {
+      'remark': 'col6Remark',
+      'title': 'Secure Advance',
+    },
+    _fMobAdv: {
+      'remark': 'col7Remark',
+      'title': 'Mobilisation Advance',
+    },
+    _fOthDed: {
+      'remark': 'col17Remark',
+      'title': 'Other Deduction',
+    },
+    _fWithheld: {
+      'remark': 'col18Remark',
+      'title': 'Withheld',
+    },
+    _fMobAdvRec: {
+      'remark': 'col19Remark',
+      'title': 'Mobilisation Advance Recovery',
+    },
+    _fWhRelease: {
+      'remark': 'col20Remark',
+      'title': 'Withheld Release',
+    },
+    _fNetAmtRecd: {
+      'remark': 'col23Remark',
+      'title': 'Net Amount Received',
+    },
+  };
+  final Set<String> _existingRowKeys = {};
+
+  List<SalesBillingModel> _billingList = [];
+  bool _isLoadingBilling = false;
+  bool _showDownloadButton = true;
+  SalesBillingSummaryModel? _billingSummary;
+  bool _isLoadingStages = false;
+
   @override
   void initState() {
     super.initState();
-    if (invDate != null) {
-      _invDateController.text = DateFormat('yyyy-MM-dd').format(invDate!);
+    initializeGrid(isViewOnly: widget.isReadOnly == true);
+    initializeGrid();
+    loadCustomers();
+    _loadUserDetails();
+    if (widget.initialCustomerId != null && widget.initialProjectId != null) {
+      selectedCustomerId = widget.initialCustomerId;
+      selectedProjectId = widget.initialProjectId;
+      customerController.text = widget.initialCustomerName ?? '';
+      siteController.text = widget.initialProjectName ?? '';
+
+      fetchWorkOrderValue(widget.initialCustomerId!, widget.initialProjectId!);
+      _fetchBillingSummaryForProject(widget.initialProjectId!);
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _loadBillingDataForProject(
+          widget.initialCustomerId!,
+          widget.initialProjectId!,
+        ); // ← uses the working endpoint
+      });
     }
-    if (recDate != null) {
-      _recDateController.text = DateFormat('yyyy-MM-dd').format(recDate!);
-    }
-    itController.text = '2';
-    retentionController.text = '5';
-    gstController.text = '18';
-    amountController.addListener(_calculateTotals);
-    gstController.addListener(_calculateTotals);
-
-    // Load customers first, then load billing data
-    _initializeData();
-  }
-
-  Future<void> _initializeData() async {
-    await loadCustomers();
-    await _loadUserDetails();
-
-    // Now customerList is populated, load billing data
-    if (widget.billingData != null) {
-      _loadBillingData();
-    }
-  }
-
-  @override
-  void dispose() {
-    stageRemarksController.dispose();
-    amountController.removeListener(_calculateTotals);
-    gstController.removeListener(_calculateTotals);
-    gstAmountController.dispose();
-    woValueController.dispose();
-    WorkDoneController.dispose();
-    otherDeductionController.dispose();
-    _secTotalController.dispose();
-    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final isEditing = widget.stagelistData != null && !widget.isReadOnly!;
+    final _scrollController = ScrollController();
+    final _formKey = GlobalKey<FormState>();
     final isViewOnly = widget.isReadOnly == true;
-    final isAndroid = Platform.isAndroid;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Billing Update'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.list_alt),
-            tooltip: 'View Billing List',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ViewBillingScreen(
-                    isSuperAdmin: widget.isSuperAdmin,
-                  ),
-                ),
-              );
-            },
-          ),
+          if (!isViewOnly)
+            IconButton(
+              icon: const Icon(Icons.add),
+              tooltip: 'Add Row',
+              onPressed: () {
+                // Check if customer and project are selected
+                if (selectedCustomerId == null || selectedProjectId == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please select Customer and Site first.'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                  return;
+                }
+                addNewRow();
+                setState(() => _showDownloadButton = false);
+              },
+            ),
+          if (_showDownloadButton)
+            IconButton(
+              icon: const Icon(Icons.download),
+              tooltip: 'Download Billing Data',
+              onPressed: () {
+                if (selectedCustomerId == null || selectedProjectId == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please select Customer and Site first.'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                  return;
+                }
+                _downloadBillingData();
+              },
+            ),
         ],
       ),
-      body: SingleChildScrollView(
-        controller: _scrollController,
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ///Customer Name & Project Name
-              Row(
+      body: Form(
+        key: _formKey,
+        child: Column(
+          children: [
+            /// Fixed height section for the search fields
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
+              child: Row(
                 children: [
                   Expanded(
                     child: isViewOnly
@@ -228,28 +253,22 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
                               });
                             },
                             onSelected: (ChecklistCustomer selection) {
-                              debugPrint(
-                                  'Selected Customer: ${selection.companyName}, ID: ${selection.customerId}');
-
                               customerController.text =
                                   "${selection.customerId} - ${selection.companyName}";
-
                               setState(() {
                                 selectedCustomerId = selection.customerId;
                                 selectedProjectId = null;
                                 siteController.clear();
-                                // Clear stages when customer changes
-                                dynamicStages = {};
-                                stageList.clear();
-                                selectedstageId = null;
-                                stageController.clear();
-                                // Clear WO value when customer changes
-                                woValueController.clear();
+                                _billingList = [];
+                                woValueController.text = '';
                                 _woValueInclGst = null;
                                 _woValueExclGst = null;
-                                _secureAdvanceEntries.clear();
                               });
-
+                              // ← clear grid safely after frame
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                stateManager?.removeAllRows();
+                                setState(() => rows = []);
+                              });
                               loadProjects(selection.customerId);
                             },
                             fieldViewBuilder: (
@@ -276,9 +295,7 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
                                               selectedCustomerId = null;
                                               selectedProjectId = null;
                                               siteController.clear();
-                                              woValueController.clear();
-                                              _woValueInclGst = null;
-                                              _woValueExclGst = null;
+                                              rows = [];
                                             });
                                           },
                                         )
@@ -325,19 +342,22 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
                             onSelected: (Project selection) {
                               siteController.text =
                                   "${selection.projectId} - ${selection.projectName}";
-                              setState(() {
-                                selectedProjectId = selection.projectId;
-                              });
-
                               if (selectedCustomerId != null) {
-                                // Load stages
-                                loadStagesFromApi(
-                                    selectedCustomerId!, selection.projectId);
-
-                                // ✅ FETCH WORK ORDER VALUE HERE
                                 fetchWorkOrderValue(
                                     selectedCustomerId!, selection.projectId);
+                                _fetchBillingSummaryForProject(
+                                    selection.projectId);
                               }
+                              setState(() {
+                                selectedProjectId = selection.projectId;
+                                _billingList = [];
+                              });
+                              // ← clear grid safely after frame, then load
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                stateManager?.removeAllRows();
+                                setState(() => rows = []);
+                                _fetchAndLoadBillingEntries();
+                              });
                             },
                             fieldViewBuilder: (
                               context,
@@ -361,15 +381,7 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
                                             siteController.clear();
                                             setState(() {
                                               selectedProjectId = null;
-                                              // Clear stages when project is cleared
-                                              dynamicStages = {};
-                                              stageList.clear();
-                                              selectedstageId = null;
-                                              stageController.clear();
-                                              woValueController.clear();
-                                              _woValueInclGst = null;
-                                              _woValueExclGst = null;
-                                              _secureAdvanceEntries.clear();
+                                              rows = [];
                                             });
                                           },
                                         )
@@ -388,2291 +400,260 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+            ),
 
-              /// Work Order Value Field
-              Row(children: [
+            /// Work Order Value Field
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
                 Expanded(
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'WO Value:',
+                        'Work Order Value:',
                         style: TextStyle(
                           fontSize: 16,
                           color: AppColors.primaryLight,
                         ),
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(width: 8),
                       if (_isLoading)
                         const SizedBox(
                           height: 20,
                           width: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      else if (woValueController.text.isEmpty)
+                        Text(
+                          'Select project to fetch',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey.shade500,
+                          ),
+                        )
+                      else if (woValueController.text.contains('Error') ||
+                          woValueController.text == 'No data available')
+                        Text(
+                          woValueController.text,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.red,
                           ),
                         )
                       else
-                        Row(
+                        Wrap(
+                          crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
                             Text(
-                              woValueController.text.isEmpty
-                                  ? 'Select project to fetch'
-                                  : woValueController.text,
-                              style: TextStyle(
+                              '₹ ${formatIndianNumber(_woValueExclGst ?? 0)} (Excl. GST 18%)',
+                              style: const TextStyle(
+                                  fontSize: 13, color: Colors.blue),
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              '₹ ${formatIndianNumber(_woValueInclGst ?? 0)} (Incl. GST 18%)',
+                              style: const TextStyle(
                                 fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                                color:
-                                    woValueController.text.contains('Error') ||
-                                            woValueController.text ==
-                                                'No data available'
-                                        ? Colors.red
-                                        : woValueController.text.isEmpty
-                                            ? Colors.grey.shade500
-                                            : Colors.blue.shade700,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue,
                               ),
                             ),
-                            if (woValueController.text.isNotEmpty &&
-                                woValueController.text != 'No data available' &&
-                                woValueController.text != 'Error loading' &&
-                                woValueController.text != 'Error' &&
-                                woValueController.text != 'Loading...')
-                              IconButton(
-                                icon: const Icon(Icons.info_outline, size: 18),
-                                onPressed: () {
-                                  if (_woValueInclGst != null) {
-                                    _showWODetailsDialog(context);
-                                  }
-                                },
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(),
-                                tooltip: 'View details',
-                              ),
+                            const SizedBox(width: 10),
+                            Builder(
+                              builder: (context) {
+                                final totalWorkDone =
+                                    (stateManager?.rows ?? []).fold<double>(
+                                  0.0,
+                                  (sum, row) {
+                                    final v = row.cells[_fWorkDone]?.value;
+                                    return sum +
+                                        (double.tryParse(
+                                                v?.toString() ?? '0') ??
+                                            0.0);
+                                  },
+                                );
+                                final toBeBilled =
+                                    (_woValueInclGst ?? 0.0) - totalWorkDone;
+
+                                return Text(
+                                  'To be billed: ₹ ${formatIndianNumber(toBeBilled < 0 ? 0 : toBeBilled)}',
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.green,
+                                  ),
+                                );
+                              },
+                            ),
                           ],
                         ),
                     ],
                   ),
                 ),
-              ]),
-              const SizedBox(height: 16),
-
-              ///Bill No & Invoice Date & Bill Description & % of work & Work done value
-              if (isAndroid) ...[
-                // Android: Amount & INV No in first row
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: amountController,
-                        decoration: InputDecoration(
-                          labelText: "Amount",
-                          hintText: "Amount",
-                          border: const OutlineInputBorder(),
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 14),
-                          suffixIcon:
-                              amountController.text.isNotEmpty && !isViewOnly
-                                  ? IconButton(
-                                      icon: const Icon(Icons.clear, size: 18),
-                                      onPressed: () {
-                                        setState(() {
-                                          amountController.clear();
-                                        });
-                                      },
-                                      padding: EdgeInsets.zero,
-                                      tooltip: 'Clear value',
-                                    )
-                                  : null,
-                        ),
-                        readOnly: isViewOnly,
-                        enabled: !isViewOnly,
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Please enter amount';
-                          }
-                          if (double.tryParse(value) == null) {
-                            return 'Please enter a valid amount';
-                          }
-                          return null;
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: TextFormField(
-                        controller: invnoController,
-                        decoration: InputDecoration(
-                          labelText: "Bill No",
-                          hintText: "Bill No",
-                          border: const OutlineInputBorder(),
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 14),
-                          suffixIcon:
-                              invnoController.text.isNotEmpty && !isViewOnly
-                                  ? IconButton(
-                                      icon: const Icon(Icons.clear, size: 18),
-                                      onPressed: () {
-                                        setState(() {
-                                          invnoController.clear();
-                                        });
-                                      },
-                                      padding: EdgeInsets.zero,
-                                      tooltip: 'Clear value',
-                                    )
-                                  : null,
-                        ),
-                        readOnly: isViewOnly,
-                        enabled: !isViewOnly,
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Please enter invoice number';
-                          }
-                          return null;
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: TextFormField(
-                        controller: descController,
-                        decoration: InputDecoration(
-                          labelText: "Bill Description",
-                          hintText: "Bill Description",
-                          border: const OutlineInputBorder(),
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 14),
-                          suffixIcon:
-                              descController.text.isNotEmpty && !isViewOnly
-                                  ? IconButton(
-                                      icon: const Icon(Icons.clear, size: 18),
-                                      onPressed: () {
-                                        setState(() {
-                                          descController.clear();
-                                        });
-                                      },
-                                      padding: EdgeInsets.zero,
-                                      tooltip: 'Clear value',
-                                    )
-                                  : null,
-                        ),
-                        readOnly: isViewOnly,
-                        enabled: !isViewOnly,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                // Android: INV Date in separate row
-                TextFormField(
-                  controller: _invDateController,
-                  readOnly: true,
-                  decoration: InputDecoration(
-                    labelText: "Date",
-                    border: const OutlineInputBorder(),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 14,
-                    ),
-                    suffixIcon: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (invDate != null && !isViewOnly)
-                          IconButton(
-                            icon: const Icon(Icons.clear, size: 18),
-                            onPressed: () {
-                              setState(() {
-                                invDate = null;
-                                _invDateController.clear();
-                              });
-                            },
-                            padding: EdgeInsets.zero,
-                            tooltip: 'Clear date',
-                          ),
-                        if (invDate == null && !isViewOnly)
-                          Icon(
-                            Icons.calendar_today,
-                            color: AppColors.primary,
-                            size: 20,
-                          ),
-                      ],
-                    ),
-                  ),
-                  validator: (value) {
-                    if (invDate == null) {
-                      return 'Please select a bill date';
-                    }
-                    return null;
-                  },
-                  onTap: isViewOnly
-                      ? null
-                      : () async {
-                          await _selectDate(context, true);
-                        },
-                ),
-              ] else ...[
-                // Windows/Other: All three in a single row
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: invnoController,
-                        decoration: InputDecoration(
-                          labelText: "Bill No",
-                          hintText: "Bill No",
-                          border: const OutlineInputBorder(),
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 14),
-                          suffixIcon:
-                              invnoController.text.isNotEmpty && !isViewOnly
-                                  ? IconButton(
-                                      icon: const Icon(Icons.clear, size: 18),
-                                      onPressed: () {
-                                        setState(() {
-                                          invnoController.clear();
-                                        });
-                                      },
-                                      padding: EdgeInsets.zero,
-                                      tooltip: 'Clear value',
-                                    )
-                                  : null,
-                        ),
-                        readOnly: isViewOnly,
-                        enabled: !isViewOnly,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    SizedBox(
-                      width: 300,
-                      child: TextFormField(
-                        controller: _invDateController,
-                        readOnly: true,
-                        decoration: InputDecoration(
-                          labelText: "Date",
-                          border: const OutlineInputBorder(),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 14,
-                          ),
-                          suffixIcon: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (invDate != null && !isViewOnly)
-                                IconButton(
-                                  icon: const Icon(Icons.clear, size: 18),
-                                  onPressed: () {
-                                    setState(() {
-                                      invDate = null;
-                                      _invDateController.clear();
-                                    });
-                                  },
-                                  padding: EdgeInsets.zero,
-                                  tooltip: 'Clear date',
-                                ),
-                              if (invDate == null && !isViewOnly)
-                                Icon(
-                                  Icons.calendar_today,
-                                  color: AppColors.primary,
-                                  size: 20,
-                                ),
-                            ],
-                          ),
-                        ),
-                        onTap: isViewOnly
-                            ? null
-                            : () async {
-                                await _selectDate(context, true);
-                              },
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: TextFormField(
-                        controller: descController,
-                        inputFormatters: [
-                          UpperCaseTextFormatter(), // ← Custom formatter
-                        ],
-                        decoration: InputDecoration(
-                          labelText: "Bill Description",
-                          hintText: "Bill Description",
-                          border: const OutlineInputBorder(),
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 14),
-                          suffixIcon:
-                              descController.text.isNotEmpty && !isViewOnly
-                                  ? IconButton(
-                                      icon: const Icon(Icons.clear, size: 18),
-                                      onPressed: () {
-                                        setState(() {
-                                          descController.clear();
-                                        });
-                                      },
-                                      padding: EdgeInsets.zero,
-                                      tooltip: 'Clear value',
-                                    )
-                                  : null,
-                        ),
-                        readOnly: isViewOnly,
-                        enabled: !isViewOnly,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: TextFormField(
-                        controller:
-                            percentWorkController, // ✅ Use separate controller
-                        decoration: InputDecoration(
-                          labelText: "% Of Work",
-                          hintText: "% Of Work",
-                          border: const OutlineInputBorder(),
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 14),
-                          suffixIcon: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (percentWorkController.text.isNotEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 4),
-                                  child: Text(
-                                    '%',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.grey.shade600,
-                                    ),
-                                  ),
-                                ),
-                              if (percentWorkController.text.isNotEmpty &&
-                                  !isViewOnly)
-                                IconButton(
-                                  icon: const Icon(Icons.clear, size: 18),
-                                  onPressed: () {
-                                    setState(() {
-                                      percentWorkController.clear();
-                                      _calculateWorkDoneValue();
-                                    });
-                                  },
-                                  padding: EdgeInsets.zero,
-                                  tooltip: 'Clear',
-                                ),
-                            ],
-                          ),
-                        ),
-                        readOnly: isViewOnly,
-                        enabled: !isViewOnly,
-                        keyboardType: TextInputType.number,
-                        onChanged: (_) {
-                          setState(() {
-                            _calculateWorkDoneValue();
-                          });
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: TextFormField(
-                        controller: WorkDoneController,
-                        decoration: InputDecoration(
-                          labelText: "Work Done Value",
-                          hintText: "Work Done Value",
-                          border: const OutlineInputBorder(),
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 14),
-                          suffixIcon: WorkDoneController.text.isNotEmpty
-                              ? IconButton(
-                                  icon: const Icon(Icons.clear, size: 18),
-                                  onPressed: () {
-                                    setState(() {
-                                      WorkDoneController.clear();
-                                    });
-                                  },
-                                  padding: EdgeInsets.zero,
-                                  tooltip: 'Clear value',
-                                )
-                              : null,
-                        ),
-                        readOnly: true,
-                        enabled: true,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.blue
-                              .shade700, // Highlight to show it's auto-filled
-                        ),
-                      ),
-                    ),
-                  ],
+                // ── Stages info button — pinned to the end of the row ─────────────
+                IconButton(
+                  icon: const Icon(Icons.info_outline,
+                      size: 20, color: AppColors.primaryLight),
+                  tooltip: 'View Stages',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: () => _showStagesDialog(),
                 ),
               ],
-              const SizedBox(height: 16),
+            ),
+            const SizedBox(height: 16),
 
-              ///Secure Advance
-              Text(
-                'Secure Advance',
-                style: TextStyle(fontSize: 16, color: AppColors.primaryLight),
-              ),
-              const SizedBox(height: 16),
+            /// Grid with "Add Row" button when empty
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: PlutoGrid(
+                  // ← always show PlutoGrid, never toggle
+                  columns: columns,
+                  rows: rows,
+                  onLoaded: (PlutoGridOnLoadedEvent event) {
+                    stateManager = event.stateManager;
 
-              /// Secure Advance Amount & Secure Advance Remarks
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  /// 1. Secure Advance Amount
-                  SizedBox(
-                    width: 500,
-                    child: TextFormField(
-                      controller: secamountController,
-                      decoration: InputDecoration(
-                        labelText: "Amount",
-                        hintText: "Enter amount or expression",
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 14,
-                        ),
-                        suffixIcon: secamountController.text.isNotEmpty &&
-                                !isViewOnly
-                            ? IconButton(
-                                icon: const Icon(Icons.clear, size: 18),
-                                onPressed: () =>
-                                    setState(() => secamountController.clear()),
-                                padding: EdgeInsets.zero,
-                                tooltip: 'Clear value',
-                              )
-                            : null,
-                      ),
-                      keyboardType: TextInputType.text,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(
-                          RegExp(r'[0-9+\-*/%(). ]'),
-                        ),
-                        IndianNumberInputFormatter(),
-                      ],
-                      readOnly: isViewOnly,
-                      enabled: !isViewOnly,
-                      onChanged: (_) => setState(() {}),
+                    stateManager!.setSelectingMode(PlutoGridSelectingMode.cell);
+                    if (rows.isNotEmpty && stateManager!.rows.isEmpty) {
+                      stateManager!.appendRows(rows);
+                    }
+
+                    // ✅ Numpad key support
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      stateManager!.keyManager?.subject.listen((keyEvent) {
+                        final key = keyEvent.event;
+                        print(
+                            'Key pressed: ${key.runtimeType} - ${key is RawKeyDownEvent ? (key as RawKeyDownEvent).logicalKey : 'not raw'}');
+                        if (key is! RawKeyDownEvent) return;
+                        if (stateManager == null) return;
+                        if (stateManager!.isEditing)
+                          return; // already editing, skip
+
+                        final numpadKeys = {
+                          LogicalKeyboardKey.numpad0,
+                          LogicalKeyboardKey.numpad1,
+                          LogicalKeyboardKey.numpad2,
+                          LogicalKeyboardKey.numpad3,
+                          LogicalKeyboardKey.numpad4,
+                          LogicalKeyboardKey.numpad5,
+                          LogicalKeyboardKey.numpad6,
+                          LogicalKeyboardKey.numpad7,
+                          LogicalKeyboardKey.numpad8,
+                          LogicalKeyboardKey.numpad9,
+                          LogicalKeyboardKey.numpadDecimal,
+                        };
+
+                        if (numpadKeys.contains(key.logicalKey)) {
+                          stateManager!.setEditing(true);
+                        }
+                      });
+                    });
+                  },
+                  onRowDoubleTap: (PlutoGridOnRowDoubleTapEvent event) {
+                    debugPrint('Row double tapped');
+                  },
+                  onChanged: _onGridChanged,
+                  onSelected: (PlutoGridOnSelectedEvent event) async {
+                    if (event.row == null || event.cell == null) return;
+
+                    final column = event.cell!.column;
+                    final row = event.row!;
+
+                    // ✅ Handle Date column — open picker
+                    if (column.title == 'Date') {
+                      await selectDateForCell(row, column);
+                      return; // ← return early, no setEditing needed for date
+                    }
+
+                    // ✅ Skip read-only, attachment, remark-icon columns
+                    final skipFields = {
+                      'col5', 'col8', 'col10', 'col11', 'col12',
+                      'col13', 'col14', 'col15', 'col21', 'col22',
+                      'col25', // Outstanding (read-only)
+                      'col26', // Attachment handled by its own InkWell
+                    };
+
+                    if (skipFields.contains(column.field)) return;
+
+                    // ✅ For remarkConfig fields — let InkWell handle it, still set editing for text part
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (stateManager == null) return;
+                      if (!stateManager!.isEditing) {
+                        stateManager!.setEditing(true);
+                      }
+                    });
+                  },
+
+                  configuration: PlutoGridConfiguration(
+                    style: PlutoGridStyleConfig(
+                      rowHeight: 45,
+                      columnHeight: 50,
+                      gridBorderRadius: BorderRadius.circular(8),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-
-                  /// 2. Secure Advance Remarks
-                  SizedBox(
-                    width: 500,
-                    child: TextFormField(
-                      controller: secadvrmksController,
-                      inputFormatters: [
-                        UpperCaseTextFormatter(), // ← Custom formatter
-                      ],
-                      decoration: InputDecoration(
-                        labelText: "Remarks",
-                        hintText: "Enter remarks",
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
-                        suffixIcon:
-                            secadvrmksController.text.isNotEmpty && !isViewOnly
-                                ? IconButton(
-                                    icon: const Icon(Icons.clear, size: 18),
-                                    onPressed: () {
-                                      setState(() {
-                                        secadvrmksController.clear();
-                                      });
-                                    },
-                                    padding: EdgeInsets.zero,
-                                    tooltip: 'Clear value',
-                                  )
-                                : null,
-                      ),
-                      readOnly: isViewOnly,
-                      enabled: !isViewOnly,
+                    scrollbar: const PlutoGridScrollbarConfig(
+                      isAlwaysShown: true,
                     ),
+                    // ✅ Single click enters edit mode
+                    enterKeyAction: PlutoGridEnterKeyAction.editingAndMoveDown,
+                    tabKeyAction: PlutoGridTabKeyAction.moveToNextOnEdge,
+                    enableMoveDownAfterSelecting: true,
                   ),
-                  const SizedBox(width: 12),
-
-                  /// Left side: Add Button + Total field stacked
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Add Button
-                      if (!isViewOnly)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: ElevatedButton(
-                            onPressed: () => _addEntry(
-                              entries: _secureAdvanceEntries,
-                              amountCtrl: secamountController,
-                              remarksCtrl: secadvrmksController,
-                              label: 'Secure Advance',
-                              onUpdate: _updateSecTotalController,
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 20, vertical: 14),
-                            ),
-                            child: const Text('Add'),
-                          ),
-                        ),
-
-                      /// Total — only when table has entries
-                      if (_secureAdvanceEntries.isNotEmpty) ...[
-                        const SizedBox(height: 50),
-                        SizedBox(
-                          width: 300,
-                          child: TextFormField(
-                            readOnly: true,
-                            controller: _secTotalController, // ← keep only this
-                            // initialValue: '₹ ...',        // ← remove this line entirely
-                            decoration: InputDecoration(
-                              labelText: "Total Secure Advance",
-                              border: const OutlineInputBorder(),
-                              contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 14),
-                              filled: true,
-                              fillColor: Colors.indigo.shade50,
-                              labelStyle: TextStyle(
-                                color: Colors.indigo.shade700,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              prefixIcon: Icon(
-                                Icons.account_balance_wallet_outlined,
-                                color: Colors.indigo.shade400,
-                                size: 20,
-                              ),
-                            ),
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14,
-                              color: Colors.indigo.shade800,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-
-                  const SizedBox(width: 24),
-
-                  /// RIGHT: Secure Advance Table
-                  _buildAdvanceTable(
-                    entries: _secureAdvanceEntries,
-                    amountCtrl: secamountController,
-                    remarksCtrl: secadvrmksController,
-                    label: 'Secure Advance',
-                    onUpdate: _updateSecTotalController,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              ///Mobilization Advance
-              const Text(
-                'Mobilization Advance',
-                style: TextStyle(fontSize: 16, color: AppColors.primaryLight),
-              ),
-              const SizedBox(height: 16),
-
-              /// Mobilization Advance Amount & Mobilization Advance Remarks
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  /// 1. Mobilization Advance Amount
-                  SizedBox(
-                    width: 500,
-                    child: TextFormField(
-                      controller: mobamountController,
-                      decoration: InputDecoration(
-                        labelText: "Amount",
-                        hintText: "Enter amount",
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
-                        suffixIcon: mobamountController.text.isNotEmpty &&
-                                !isViewOnly
-                            ? IconButton(
-                                icon: const Icon(Icons.clear, size: 18),
-                                onPressed: () =>
-                                    setState(() => mobamountController.clear()),
-                                padding: EdgeInsets.zero,
-                                tooltip: 'Clear value',
-                              )
-                            : null,
-                      ),
-                      keyboardType: TextInputType.text,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(
-                          RegExp(r'[0-9+\-*/%(). ]'),
-                        ),
-                        IndianNumberInputFormatter(),
-                      ],
-                      readOnly: isViewOnly,
-                      enabled: !isViewOnly,
-                      onChanged: (_) => setState(() {}),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-
-                  /// 2. Mobilization Advance Remarks
-                  SizedBox(
-                    width: 500,
-                    child: TextFormField(
-                      controller: mobadvrmksController,
-                      inputFormatters: [
-                        UpperCaseTextFormatter(), // ← Custom formatter
-                      ],
-                      decoration: InputDecoration(
-                        labelText: "Remarks",
-                        hintText: "Enter remarks",
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
-                        suffixIcon:
-                            mobadvrmksController.text.isNotEmpty && !isViewOnly
-                                ? IconButton(
-                                    icon: const Icon(Icons.clear, size: 18),
-                                    onPressed: () {
-                                      setState(() {
-                                        mobadvrmksController.clear();
-                                      });
-                                    },
-                                    padding: EdgeInsets.zero,
-                                    tooltip: 'Clear value',
-                                  )
-                                : null,
-                      ),
-                      readOnly: isViewOnly,
-                      enabled: !isViewOnly,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-
-                  /// Left side: Add Button + Total field stacked
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Add Button
-                      if (!isViewOnly)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: ElevatedButton(
-                            onPressed: () => _addEntry(
-                              entries: _mobAdvanceEntries,
-                              amountCtrl: mobamountController,
-                              remarksCtrl: mobadvrmksController,
-                              label: 'Mobilization Advance',
-                              onUpdate: _updateMobTotalController,
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 20, vertical: 14),
-                            ),
-                            child: const Text('Add'),
-                          ),
-                        ),
-
-                      /// Total — only when table has entries
-                      if (_mobAdvanceEntries.isNotEmpty) ...[
-                        const SizedBox(height: 50),
-                        SizedBox(
-                          width: 300,
-                          child: TextFormField(
-                            readOnly: true,
-                            controller: _mobTotalController,
-                            decoration: InputDecoration(
-                              labelText: "Total Mobilization Advance",
-                              border: const OutlineInputBorder(),
-                              contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 14),
-                              filled: true,
-                              fillColor: Colors.indigo.shade50,
-                              labelStyle: TextStyle(
-                                color: Colors.indigo.shade700,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              prefixIcon: Icon(
-                                Icons.account_balance_wallet_outlined,
-                                color: Colors.indigo.shade400,
-                                size: 20,
-                              ),
-                              prefixText:
-                                  '₹ ', // ← shows ₹ visually, not stored in controller
-                              prefixStyle: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 14,
-                                color: Colors.indigo.shade800,
-                              ),
-                            ),
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14,
-                              color: Colors.indigo.shade800,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-
-                  const SizedBox(width: 24),
-
-                  /// RIGHT: Secure Advance Table
-                  _buildAdvanceTable(
-                    entries: _mobAdvanceEntries,
-                    amountCtrl: mobamountController,
-                    remarksCtrl: mobadvrmksController,
-                    label: 'Mobilization Advance',
-                    onUpdate: _updateMobTotalController,
-                  )
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              ///Taxable Value
-              const Text(
-                'Taxable Value',
-                style: TextStyle(fontSize: 16, color: AppColors.primaryLight),
-              ),
-              const SizedBox(height: 16),
-
-              ///Taxable Value & GST Percentage & GST Amount & Total Bill Amount
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  /// 1. Taxable Value
-                  Expanded(
-                    child: TextFormField(
-                      controller: amountController,
-                      decoration: InputDecoration(
-                        labelText: "Taxable Value",
-                        hintText: "Taxable Value",
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
-                        suffixIcon: amountController.text.isNotEmpty &&
-                                !isViewOnly
-                            ? IconButton(
-                                icon: const Icon(Icons.clear, size: 18),
-                                onPressed: () =>
-                                    setState(() => amountController.clear()),
-                                padding: EdgeInsets.zero,
-                                tooltip: 'Clear value',
-                              )
-                            : null,
-                      ),
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [IndianNumberInputFormatter()],
-                      readOnly: isViewOnly,
-                      enabled: !isViewOnly,
-                      onChanged: (_) => setState(() {
-                        _calculateTotals();
-                      }),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-
-                  /// 2. GST %
-                  Expanded(
-                    child: TextFormField(
-                      controller: gstController,
-                      decoration: InputDecoration(
-                        labelText: "GST %",
-                        hintText: "GST %",
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
-                        suffixIcon: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // % Symbol Icon
-                            if (gstController.text.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(right: 4),
-                                child: Text(
-                                  '%',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.grey.shade600,
-                                  ),
-                                ),
-                              ),
-                            if (gstController.text.isNotEmpty && !isViewOnly)
-                              IconButton(
-                                icon: const Icon(Icons.clear, size: 18),
-                                onPressed: () {
-                                  setState(() {
-                                    gstController.clear();
-                                    _calculateTotals();
-                                  });
-                                },
-                                padding: EdgeInsets.zero,
-                                tooltip: 'Clear',
-                              ),
-                          ],
-                        ),
-                      ),
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      readOnly: isViewOnly,
-                      enabled: !isViewOnly,
-                      onChanged: (_) {
-                        setState(() {
-                          _calculateTotals();
-                        });
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-
-                  /// 3. GST Amount (auto calculated)
-                  Expanded(
-                    child: TextFormField(
-                      controller: gstAmountController,
-                      decoration: const InputDecoration(
-                        labelText: "GST Amount",
-                        hintText: "Auto calculated",
-                        border: OutlineInputBorder(),
-                        contentPadding:
-                            EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                      ),
-                      readOnly: true,
-                      enabled: true,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-
-                  /// 4. Total Bill Amount (auto calculated)
-                  Expanded(
-                    child: TextFormField(
-                      controller: totbillamountController,
-                      decoration: const InputDecoration(
-                        labelText: "Total Bill Amount",
-                        hintText: "Auto calculated",
-                        border: OutlineInputBorder(),
-                        contentPadding:
-                            EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                      ),
-                      readOnly: true,
-                      enabled: true,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              ///Deductions
-              const Text(
-                'Deductions',
-                style: TextStyle(fontSize: 16, color: AppColors.primaryLight),
-              ),
-              const SizedBox(height: 16),
-
-              ///TDS & TDSCGST & TDSSGST & Security Deposit & Labour Cess & Mobilization Interest
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ///TDS Amount (auto calculated)
-                  Expanded(
-                    child: TextFormField(
-                      controller: itAmountController,
-                      decoration: const InputDecoration(
-                        labelText: "TDS Amount",
-                        hintText: "Auto calculated",
-                        border: OutlineInputBorder(),
-                        contentPadding:
-                            EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                      ),
-                      readOnly: true,
-                      enabled: true,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-
-                  ///TDSCGST Amount (auto calculated)
-                  Expanded(
-                    child: TextFormField(
-                      controller: TDSCGSTController,
-                      decoration: const InputDecoration(
-                        labelText: "TDS CGST",
-                        hintText: "Auto calculated",
-                        border: OutlineInputBorder(),
-                        contentPadding:
-                            EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                      ),
-                      readOnly: true,
-                      enabled: true,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-
-                  ///TDSSGST Amount (auto calculated)
-                  Expanded(
-                    child: TextFormField(
-                      controller: TDSSGSTController,
-                      decoration: const InputDecoration(
-                        labelText: "TDS SGST",
-                        hintText: "Auto calculated",
-                        border: OutlineInputBorder(),
-                        contentPadding:
-                            EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                      ),
-                      readOnly: true,
-                      enabled: true,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-
-                  ///Security Deposit Amount (auto calculated)
-                  Expanded(
-                    child: TextFormField(
-                      controller: secdepositController,
-                      decoration: const InputDecoration(
-                        labelText: "Security Deposit Amount",
-                        hintText: "Auto calculated",
-                        border: OutlineInputBorder(),
-                        contentPadding:
-                            EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                      ),
-                      readOnly: true,
-                      enabled: true,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-
-                  ///Labour Cess (auto calculated)
-                  Expanded(
-                    child: TextFormField(
-                      controller: labcessController,
-                      decoration: const InputDecoration(
-                        labelText: "Labour Cess Amount",
-                        hintText: "Auto calculated",
-                        border: OutlineInputBorder(),
-                        contentPadding:
-                            EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                      ),
-                      readOnly: true,
-                      enabled: true,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-
-                  ///Mobilization Interest
-                  Expanded(
-                    child: TextFormField(
-                      controller: mobintController,
-                      decoration: InputDecoration(
-                        labelText: "Mobilization Interest",
-                        hintText: "Mobilization Interest",
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
-                        suffixIcon:
-                            mobintController.text.isNotEmpty && !isViewOnly
-                                ? IconButton(
-                                    icon: const Icon(Icons.clear, size: 18),
-                                    onPressed: () {
-                                      setState(() {
-                                        mobintController.clear();
-                                        _calculateTotals();
-                                      });
-                                    },
-                                    padding: EdgeInsets.zero,
-                                    tooltip: 'Clear value',
-                                  )
-                                : null,
-                      ),
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [IndianNumberInputFormatter()],
-                      readOnly: isViewOnly,
-                      enabled: !isViewOnly,
-                      onChanged: (_) => setState(() => _calculateTotals()),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              ///Other Deductions
-              const Text(
-                'Other Deductions',
-                style: TextStyle(fontSize: 16, color: AppColors.primaryLight),
-              ),
-              const SizedBox(height: 16),
-
-              /// Other Deduction & Remarks
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  /// 1. Other Deduction
-                  SizedBox(
-                    width: 500,
-                    child: TextFormField(
-                      controller: otherdedamountController,
-                      decoration: InputDecoration(
-                        labelText: "Amount",
-                        hintText: "Enter amount",
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
-                        suffixIcon: otherdedamountController.text.isNotEmpty &&
-                                !isViewOnly
-                            ? IconButton(
-                                icon: const Icon(Icons.clear, size: 18),
-                                onPressed: () => setState(
-                                    () => otherdedamountController.clear()),
-                                padding: EdgeInsets.zero,
-                                tooltip: 'Clear value',
-                              )
-                            : null,
-                      ),
-                      keyboardType: TextInputType.text,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(
-                          RegExp(r'[0-9+\-*/%(). ]'),
-                        ),
-                        IndianNumberInputFormatter(),
-                      ],
-                      readOnly: isViewOnly,
-                      enabled: !isViewOnly,
-                      onChanged: (_) => setState(() {}),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-
-                  /// 2. Other Deduction Remarks
-                  SizedBox(
-                    width: 500,
-                    child: TextFormField(
-                      controller: otherdedrmksController,
-                      inputFormatters: [
-                        UpperCaseTextFormatter(), // ← Custom formatter
-                      ],
-                      decoration: InputDecoration(
-                        labelText: "Remarks",
-                        hintText: "Enter remarks",
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
-                        suffixIcon: otherdedrmksController.text.isNotEmpty &&
-                                !isViewOnly
-                            ? IconButton(
-                                icon: const Icon(Icons.clear, size: 18),
-                                onPressed: () {
-                                  setState(() {
-                                    otherdedrmksController.clear();
-                                  });
-                                },
-                                padding: EdgeInsets.zero,
-                                tooltip: 'Clear value',
-                              )
-                            : null,
-                      ),
-                      readOnly: isViewOnly,
-                      enabled: !isViewOnly,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-
-                  /// Left side: Add Button + Total field stacked
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Add Button
-                      if (!isViewOnly)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: ElevatedButton(
-                            onPressed: () => _addEntry(
-                              entries: _otherdedEntries,
-                              amountCtrl: otherdedamountController,
-                              remarksCtrl: otherdedrmksController,
-                              label: 'Other Deductions',
-                              onUpdate: _updateOtherdedTotalController,
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 20, vertical: 14),
-                            ),
-                            child: const Text('Add'),
-                          ),
-                        ),
-
-                      /// Total — only when table has entries
-                      if (_otherdedEntries.isNotEmpty) ...[
-                        const SizedBox(height: 50),
-                        SizedBox(
-                          width: 300,
-                          child: TextFormField(
-                            readOnly: true,
-                            controller: _otherdedTotalController,
-                            decoration: InputDecoration(
-                              labelText: "Total Other Deduction",
-                              border: const OutlineInputBorder(),
-                              contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 14),
-                              filled: true,
-                              fillColor: Colors.indigo.shade50,
-                              labelStyle: TextStyle(
-                                color: Colors.indigo.shade700,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              prefixIcon: Icon(
-                                Icons.account_balance_wallet_outlined,
-                                color: Colors.indigo.shade400,
-                                size: 20,
-                              ),
-                              prefixText:
-                                  '₹ ', // ← shows ₹ visually, not stored in controller
-                              prefixStyle: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 14,
-                                color: Colors.indigo.shade800,
-                              ),
-                            ),
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14,
-                              color: Colors.indigo.shade800,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-
-                  const SizedBox(width: 24),
-
-                  /// RIGHT: Other Deduction Table
-                  _buildAdvanceTable(
-                    entries: _otherdedEntries,
-                    amountCtrl: otherdedamountController,
-                    remarksCtrl: otherdedrmksController,
-                    label: 'Other Deductions',
-                    onUpdate: _updateOtherdedTotalController,
-                  )
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              ///Withheld
-              const Text(
-                'Withheld',
-                style: TextStyle(fontSize: 16, color: AppColors.primaryLight),
-              ),
-              const SizedBox(height: 16),
-
-              ///Withheld & Remarks
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  /// 1. Withheld
-                  SizedBox(
-                    width: 500,
-                    child: TextFormField(
-                      controller: whamountController,
-                      decoration: InputDecoration(
-                        labelText: "Amount",
-                        hintText: "Enter amount",
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
-                        suffixIcon: whamountController.text.isNotEmpty &&
-                                !isViewOnly
-                            ? IconButton(
-                                icon: const Icon(Icons.clear, size: 18),
-                                onPressed: () =>
-                                    setState(() => whamountController.clear()),
-                                padding: EdgeInsets.zero,
-                                tooltip: 'Clear value',
-                              )
-                            : null,
-                      ),
-                      keyboardType: TextInputType.text,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(
-                          RegExp(r'[0-9+\-*/%(). ]'),
-                        ),
-                        IndianNumberInputFormatter(),
-                      ],
-                      readOnly: isViewOnly,
-                      enabled: !isViewOnly,
-                      onChanged: (_) => setState(() {}),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-
-                  /// 2. Other Deduction Remarks
-                  SizedBox(
-                    width: 500,
-                    child: TextFormField(
-                      controller: whrmksController,
-                      inputFormatters: [
-                        UpperCaseTextFormatter(), // ← Custom formatter
-                      ],
-                      decoration: InputDecoration(
-                        labelText: "Remarks",
-                        hintText: "Enter remarks",
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
-                        suffixIcon:
-                            whrmksController.text.isNotEmpty && !isViewOnly
-                                ? IconButton(
-                                    icon: const Icon(Icons.clear, size: 18),
-                                    onPressed: () {
-                                      setState(() {
-                                        whrmksController.clear();
-                                      });
-                                    },
-                                    padding: EdgeInsets.zero,
-                                    tooltip: 'Clear value',
-                                  )
-                                : null,
-                      ),
-                      readOnly: isViewOnly,
-                      enabled: !isViewOnly,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-
-                  /// Left side: Add Button + Total field stacked
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Add Button
-                      if (!isViewOnly)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: ElevatedButton(
-                            onPressed: () => _addEntry(
-                              entries: _whEntries,
-                              amountCtrl: whamountController,
-                              remarksCtrl: whrmksController,
-                              label: 'Withheld',
-                              onUpdate: _updatewhTotalController,
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 20, vertical: 14),
-                            ),
-                            child: const Text('Add'),
-                          ),
-                        ),
-
-                      /// Total — only when table has entries
-                      if (_whEntries.isNotEmpty) ...[
-                        const SizedBox(height: 50),
-                        SizedBox(
-                          width: 300,
-                          child: TextFormField(
-                            readOnly: true,
-                            controller: _whTotalController,
-                            decoration: InputDecoration(
-                              labelText: "Total Other Deduction",
-                              border: const OutlineInputBorder(),
-                              contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 14),
-                              filled: true,
-                              fillColor: Colors.indigo.shade50,
-                              labelStyle: TextStyle(
-                                color: Colors.indigo.shade700,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              prefixIcon: Icon(
-                                Icons.account_balance_wallet_outlined,
-                                color: Colors.indigo.shade400,
-                                size: 20,
-                              ),
-                              prefixText:
-                                  '₹ ', // ← shows ₹ visually, not stored in controller
-                              prefixStyle: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 14,
-                                color: Colors.indigo.shade800,
-                              ),
-                            ),
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14,
-                              color: Colors.indigo.shade800,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-
-                  const SizedBox(width: 24),
-
-                  /// RIGHT: Other Deduction Table
-                  _buildAdvanceTable(
-                    entries: _whEntries,
-                    amountCtrl: whamountController,
-                    remarksCtrl: whrmksController,
-                    label: 'Withheld',
-                    onUpdate: _updatewhTotalController,
-                  )
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              ///Mobilization Advance Recovery
-              const Text(
-                'Mobilization Advance Recovery',
-                style: TextStyle(fontSize: 16, color: AppColors.primaryLight),
-              ),
-              const SizedBox(height: 16),
-
-              ///Mobilization Advance Recovery & Remarks
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  /// 1. Mobilization Advance Recovery
-                  SizedBox(
-                    width: 500,
-                    child: TextFormField(
-                      controller: mobadvrecamountController,
-                      decoration: InputDecoration(
-                        labelText: "Amount",
-                        hintText: "Enter amount",
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
-                        suffixIcon: mobadvrecamountController.text.isNotEmpty &&
-                                !isViewOnly
-                            ? IconButton(
-                                icon: const Icon(Icons.clear, size: 18),
-                                onPressed: () => setState(
-                                    () => mobadvrecamountController.clear()),
-                                padding: EdgeInsets.zero,
-                                tooltip: 'Clear value',
-                              )
-                            : null,
-                      ),
-                      keyboardType: TextInputType.text,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(
-                          RegExp(r'[0-9+\-*/%(). ]'),
-                        ),
-                        IndianNumberInputFormatter(),
-                      ],
-                      readOnly: isViewOnly,
-                      enabled: !isViewOnly,
-                      onChanged: (_) => setState(() {}),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-
-                  /// 2. Mobilization Advance Recovery Remarks
-                  SizedBox(
-                    width: 500,
-                    child: TextFormField(
-                      controller: mobadvrecrmksController,
-                      inputFormatters: [
-                        UpperCaseTextFormatter(), // ← Custom formatter
-                      ],
-                      decoration: InputDecoration(
-                        labelText: "Remarks",
-                        hintText: "Enter remarks",
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
-                        suffixIcon: mobadvrecrmksController.text.isNotEmpty &&
-                                !isViewOnly
-                            ? IconButton(
-                                icon: const Icon(Icons.clear, size: 18),
-                                onPressed: () {
-                                  setState(() {
-                                    mobadvrecrmksController.clear();
-                                  });
-                                },
-                                padding: EdgeInsets.zero,
-                                tooltip: 'Clear value',
-                              )
-                            : null,
-                      ),
-                      readOnly: isViewOnly,
-                      enabled: !isViewOnly,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-
-                  /// Left side: Add Button + Total field stacked
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Add Button
-                      if (!isViewOnly)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: ElevatedButton(
-                            onPressed: () => _addEntry(
-                              entries: _mobadvrecEntries,
-                              amountCtrl: mobadvrecamountController,
-                              remarksCtrl: mobadvrecrmksController,
-                              label: 'MObilization Advance Recovery',
-                              onUpdate: _updatemobadvrecTotalController,
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 20, vertical: 14),
-                            ),
-                            child: const Text('Add'),
-                          ),
-                        ),
-
-                      /// Total — only when table has entries
-                      if (_mobadvrecEntries.isNotEmpty) ...[
-                        const SizedBox(height: 50),
-                        SizedBox(
-                          width: 300,
-                          child: TextFormField(
-                            readOnly: true,
-                            controller: _mobadvrecTotalController,
-                            decoration: InputDecoration(
-                              labelText: "Total Mobilization Recovery",
-                              border: const OutlineInputBorder(),
-                              contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 14),
-                              filled: true,
-                              fillColor: Colors.indigo.shade50,
-                              labelStyle: TextStyle(
-                                color: Colors.indigo.shade700,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              prefixIcon: Icon(
-                                Icons.account_balance_wallet_outlined,
-                                color: Colors.indigo.shade400,
-                                size: 20,
-                              ),
-                              prefixText:
-                                  '₹ ', // ← shows ₹ visually, not stored in controller
-                              prefixStyle: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 14,
-                                color: Colors.indigo.shade800,
-                              ),
-                            ),
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14,
-                              color: Colors.indigo.shade800,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-
-                  const SizedBox(width: 24),
-
-                  /// RIGHT: Other Deduction Table
-                  _buildAdvanceTable(
-                    entries: _mobadvrecEntries,
-                    amountCtrl: mobadvrecamountController,
-                    remarksCtrl: mobadvrecrmksController,
-                    label: 'Mobilization Advance Recovery',
-                    onUpdate: _updatemobadvrecTotalController,
-                  )
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              ///Withheld release
-              const Text(
-                'Withheld release',
-                style: TextStyle(fontSize: 16, color: AppColors.primaryLight),
-              ),
-              const SizedBox(height: 16),
-
-              ///Withheld release & Remarks
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  /// 1. Withheld release
-                  SizedBox(
-                    width: 500,
-                    child: TextFormField(
-                      controller: whrlamountController,
-                      decoration: InputDecoration(
-                        labelText: "Amount",
-                        hintText: "Enter amount",
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
-                        suffixIcon:
-                            whrlamountController.text.isNotEmpty && !isViewOnly
-                                ? IconButton(
-                                    icon: const Icon(Icons.clear, size: 18),
-                                    onPressed: () => setState(
-                                        () => whrlamountController.clear()),
-                                    padding: EdgeInsets.zero,
-                                    tooltip: 'Clear value',
-                                  )
-                                : null,
-                      ),
-                      keyboardType: TextInputType.text,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(
-                          RegExp(r'[0-9+\-*/%(). ]'),
-                        ),
-                        IndianNumberInputFormatter(),
-                      ],
-                      readOnly: isViewOnly,
-                      enabled: !isViewOnly,
-                      onChanged: (_) => setState(() {}),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-
-                  /// 2. Withheld release Remarks
-                  SizedBox(
-                    width: 500,
-                    child: TextFormField(
-                      controller: whrlrmksController,
-                      inputFormatters: [
-                        UpperCaseTextFormatter(), // ← Custom formatter
-                      ],
-                      decoration: InputDecoration(
-                        labelText: "Remarks",
-                        hintText: "Enter remarks",
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
-                        suffixIcon:
-                            whrlrmksController.text.isNotEmpty && !isViewOnly
-                                ? IconButton(
-                                    icon: const Icon(Icons.clear, size: 18),
-                                    onPressed: () {
-                                      setState(() {
-                                        whrlrmksController.clear();
-                                      });
-                                    },
-                                    padding: EdgeInsets.zero,
-                                    tooltip: 'Clear value',
-                                  )
-                                : null,
-                      ),
-                      readOnly: isViewOnly,
-                      enabled: !isViewOnly,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-
-                  /// Left side: Add Button + Total field stacked
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Add Button
-                      if (!isViewOnly)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: ElevatedButton(
-                            onPressed: () => _addEntry(
-                              entries: _whrlEntries,
-                              amountCtrl: whrlamountController,
-                              remarksCtrl: whrlrmksController,
-                              label: 'Withheld release',
-                              onUpdate: _updatewhrlTotalController,
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 20, vertical: 14),
-                            ),
-                            child: const Text('Add'),
-                          ),
-                        ),
-
-                      /// Total — only when table has entries
-                      if (_whrlEntries.isNotEmpty) ...[
-                        const SizedBox(height: 50),
-                        SizedBox(
-                          width: 300,
-                          child: TextFormField(
-                            readOnly: true,
-                            controller: _whrlTotalController,
-                            decoration: InputDecoration(
-                              labelText: "Total Withheld release",
-                              border: const OutlineInputBorder(),
-                              contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 14),
-                              filled: true,
-                              fillColor: Colors.indigo.shade50,
-                              labelStyle: TextStyle(
-                                color: Colors.indigo.shade700,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              prefixIcon: Icon(
-                                Icons.account_balance_wallet_outlined,
-                                color: Colors.indigo.shade400,
-                                size: 20,
-                              ),
-                              prefixText:
-                                  '₹ ', // ← shows ₹ visually, not stored in controller
-                              prefixStyle: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 14,
-                                color: Colors.indigo.shade800,
-                              ),
-                            ),
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14,
-                              color: Colors.indigo.shade800,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-
-                  const SizedBox(width: 24),
-
-                  /// RIGHT: Withheld release Table
-                  _buildAdvanceTable(
-                    entries: _whrlEntries,
-                    amountCtrl: whrlamountController,
-                    remarksCtrl: whrlrmksController,
-                    label: 'Withheld Release',
-                    onUpdate: _updatewhrlTotalController,
-                  )
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              ///Total Deduction & Net receivable
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: totdedController,
-                      decoration: InputDecoration(
-                        labelText: "Total Deduction",
-                        hintText: "Total Deduction",
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
-                        suffixIcon:
-                            totdedController.text.isNotEmpty && !isViewOnly
-                                ? IconButton(
-                                    icon: const Icon(Icons.clear, size: 18),
-                                    onPressed: () {
-                                      setState(() {
-                                        totdedController.clear();
-                                      });
-                                    },
-                                    padding: EdgeInsets.zero,
-                                    tooltip: 'Clear value',
-                                  )
-                                : null,
-                      ),
-                      readOnly: isViewOnly,
-                      enabled: !isViewOnly,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: TextFormField(
-                      controller: netrecController,
-                      decoration: const InputDecoration(
-                        labelText: "Net receivable",
-                        hintText: "Auto calculated",
-                        border: OutlineInputBorder(),
-                        contentPadding:
-                            EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                      ),
-                      readOnly: true,
-                      enabled: true,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              ///Net Amount Received
-              const Text(
-                'Net Amount Received',
-                style: TextStyle(fontSize: 16, color: AppColors.primaryLight),
-              ),
-              const SizedBox(height: 16),
-
-              ///Net amount received & remarks & Date & Outstanding
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  /// 1. Net amount received
-                  SizedBox(
-                    width: 250,
-                    child: TextFormField(
-                      controller: netamntrecController,
-                      decoration: InputDecoration(
-                        labelText: "Net amount received",
-                        hintText: "Enter amount",
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
-                        suffixIcon:
-                            netamntrecController.text.isNotEmpty && !isViewOnly
-                                ? IconButton(
-                                    icon: const Icon(Icons.clear, size: 18),
-                                    onPressed: () => setState(
-                                        () => netamntrecController.clear()),
-                                    padding: EdgeInsets.zero,
-                                    tooltip: 'Clear value',
-                                  )
-                                : null,
-                      ),
-                      keyboardType: TextInputType.text,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(
-                          RegExp(r'[0-9+\-*/%(). ]'),
-                        ),
-                        IndianNumberInputFormatter(),
-                      ],
-                      readOnly: isViewOnly,
-                      enabled: !isViewOnly,
-                      onChanged: (_) => setState(() {}),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-
-                  /// 2. Net amount received Remarks
-                  SizedBox(
-                    width: 250,
-                    child: TextFormField(
-                      controller: netamntrecdrmksController,
-                      inputFormatters: [
-                        UpperCaseTextFormatter(), // ← Custom formatter
-                      ],
-                      decoration: InputDecoration(
-                        labelText: "Remarks",
-                        hintText: "Enter remarks",
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
-                        suffixIcon: netamntrecdrmksController.text.isNotEmpty &&
-                                !isViewOnly
-                            ? IconButton(
-                                icon: const Icon(Icons.clear, size: 18),
-                                onPressed: () {
-                                  setState(() {
-                                    netamntrecdrmksController.clear();
-                                  });
-                                },
-                                padding: EdgeInsets.zero,
-                                tooltip: 'Clear value',
-                              )
-                            : null,
-                      ),
-                      readOnly: isViewOnly,
-                      enabled: !isViewOnly,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-
-                  /// 3. Date
-                  SizedBox(
-                    width: 240,
-                    child: TextFormField(
-                      controller: _recDateController,
-                      readOnly: true,
-                      decoration: InputDecoration(
-                        labelText: "Date",
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 14,
-                        ),
-                        suffixIcon: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (recDate != null && !isViewOnly)
-                              IconButton(
-                                icon: const Icon(Icons.clear, size: 18),
-                                onPressed: () {
-                                  setState(() {
-                                    recDate = null;
-                                    _recDateController.clear();
-                                  });
-                                },
-                                padding: EdgeInsets.zero,
-                                tooltip: 'Clear date',
-                              ),
-                            if (recDate == null && !isViewOnly)
-                              Icon(
-                                Icons.calendar_today,
-                                color: AppColors.primary,
-                                size: 20,
-                              ),
-                          ],
-                        ),
-                      ),
-                      onTap: isViewOnly
-                          ? null
-                          : () async {
-                              await _selectDate(context, false);
-                            },
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-
-                  ///4.Outstanding
-                  SizedBox(
-                    width: 240,
-                    child: TextFormField(
-                      controller: osController,
-                      decoration: const InputDecoration(
-                        labelText: "Outstanding",
-                        hintText: "Auto calculated",
-                        border: OutlineInputBorder(),
-                        contentPadding:
-                            EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                      ),
-                      readOnly: true,
-                      enabled: true,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-
-                  /// Left side: Add Button + Total field stacked
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Add Button
-                      if (!isViewOnly)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: ElevatedButton(
-                            onPressed: () => _addnetamountEntry(),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 20, vertical: 14),
-                            ),
-                            child: const Text('Add'),
-                          ),
-                        ),
-
-                      /// Total — only when table has entries
-                      if (_netamntrecdEntries.isNotEmpty) ...[
-                        const SizedBox(height: 50),
-                        SizedBox(
-                          width: 300,
-                          child: TextFormField(
-                            readOnly: true,
-                            controller: _netamntrecdTotalController,
-                            decoration: InputDecoration(
-                              labelText: "Total Netamount Received",
-                              border: const OutlineInputBorder(),
-                              contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 14),
-                              filled: true,
-                              fillColor: Colors.indigo.shade50,
-                              labelStyle: TextStyle(
-                                color: Colors.indigo.shade700,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              prefixIcon: Icon(
-                                Icons.account_balance_wallet_outlined,
-                                color: Colors.indigo.shade400,
-                                size: 20,
-                              ),
-                              prefixText:
-                                  '₹ ', // ← shows ₹ visually, not stored in controller
-                              prefixStyle: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 14,
-                                color: Colors.indigo.shade800,
-                              ),
-                            ),
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14,
-                              color: Colors.indigo.shade800,
-                            ),
-                          ),
-                        ),
-                      ],
-
-                      const SizedBox(width: 24),
-                    ],
-                  ),
-                  const SizedBox(width: 24),
-
-                  /// RIGHT: Net Amount Received Table
-                  Expanded(
-                    child: _buildNetamountrecdTable(),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              _buildStageInputSection(),
-              const SizedBox(height: 16),
-
-              ///Document Upload Section
-              _buildAttachCard(),
-              const SizedBox(height: 16),
-
-              ///Document Text
-              if (_existingFiles.isEmpty && _attachedFiles.isEmpty)
-                Center(
-                    child: Text('No files selected',
-                        style: TextStyle(color: Colors.grey.shade600))),
-              const SizedBox(height: 16),
-
-              // Existing files (already uploaded)
-              if (_existingFiles.isNotEmpty)
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Existing Attachments:',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    ..._existingFiles.map(
-                        (fileName) => _buildExistingAttachmentItem(fileName)),
-                  ],
+                  noRowsWidget: _buildEmptyState(), // ← empty state inside grid
                 ),
-              const SizedBox(height: 16),
+              ),
+            ),
 
-              // Newly picked files
-              if (_attachedFiles.isNotEmpty)
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('New Attachments:',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    ..._attachedFiles.map((file) => _buildAttachmentItem(file)),
-                  ],
-                ),
-              const SizedBox(height: 16),
-
-              ///Submit/Update Button
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [AppColors.primary, AppColors.primaryDark],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(10),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black26,
-                            blurRadius: 5,
-                            offset: const Offset(2, 4),
-                          ),
-                        ],
-                      ),
-                      child: InkWell(
-                        onTap: () {
-                          if (_formKey.currentState!.validate()) {
-                            _submitForm();
-                          }
-                        },
-                        borderRadius: BorderRadius.circular(10),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 15),
-                          child: Center(
-                            child: Text(
-                              widget.billingData != null
-                                  ? 'Update'
-                                  : 'Submit', // ✅ Change button text
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            ),
+            // ── After PlutoGrid widget ─────────────────────────────────────────────────
+            const SizedBox(height: 16),
+            if (rows.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [AppColors.primary, AppColors.primaryDark],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: const [
+                      BoxShadow(
+                          color: Colors.black26,
+                          blurRadius: 5,
+                          offset: Offset(2, 4))
+                    ],
+                  ),
+                  child: InkWell(
+                    onTap: _submitAllRows,
+                    borderRadius: BorderRadius.circular(10),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                      child: Center(
+                        child: Text(
+                          // ✅ Show Update if all rows are existing, Submit if any new row
+                          _existingRowKeys.length == stateManager?.rows.length
+                              ? 'Update'
+                              : 'Submit',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
                           ),
                         ),
                       ),
                     ),
                   ),
-                ],
+                ),
               ),
-            ],
-          ),
+            const SizedBox(height: 16),
+          ],
         ),
       ),
     );
-  }
-
-  void _calculateWorkDoneValue() {
-    // Get WO Value (remove ₹ and commas)
-    String woValueText =
-        woValueController.text.replaceAll('₹', '').replaceAll(',', '').trim();
-
-    double woValue = double.tryParse(woValueText) ?? 0;
-
-    // Get % of Work
-    String percentText = percentWorkController.text.replaceAll('%', '').trim();
-
-    double percent = double.tryParse(percentText) ?? 0;
-
-    // Calculate Work Done Value
-    if (woValue > 0 && percent > 0) {
-      double workDone = (woValue * percent) / 100;
-      WorkDoneController.text = '₹ ${formatIndianNumber(workDone.round())}';
-    } else {
-      WorkDoneController.clear();
-    }
-  }
-
-  Future<Map<String, dynamic>> saveSalesBilling(
-      Map<String, dynamic> requestBody) async {
-    try {
-      final response = await http.post(
-        ApiUtils.getUri('SaveSalesBillinglist'),
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode(requestBody),
-      );
-
-      print('Status Code: ${response.statusCode}');
-      print('Response Body: ${response.body}');
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else {
-        return {
-          'Success': false,
-          'Message': 'Server Error: ${response.statusCode}'
-        };
-      }
-    } catch (e) {
-      print('Exception in saveSalesBilling: $e');
-      return {
-        'Success': false,
-        'Message': e.toString(),
-      };
-    }
-  }
-
-  Future<void> _submitForm() async {
-    try {
-      final isEditing = widget.billingData != null;
-
-      // ── Prepare new files for upload ──────────────────────────────────────
-      List<FileUploadModel>? uploadFiles;
-      if (_attachedFiles.isNotEmpty) {
-        uploadFiles = _attachedFiles
-            .where((f) => f.bytes != null)
-            .map((f) => FileUploadModel(
-                  filename: f.name,
-                  filedata: base64Encode(f.bytes!),
-                ))
-            .toList();
-      }
-
-      // ── Helper: parse formatted Indian number string to double ────────────
-      double? _parseField(String text) => double.tryParse(text
-          .replaceAll(',', '')
-          .replaceAll('₹', '')
-          .replaceAll('%', '')
-          .trim());
-
-      // ── Secure Advance ────────────────────────────────────────────────────
-      final secAdvAmnt = _secureAdvanceEntries.map((e) => e.amount).join('|');
-      final secAdvRemarks = _secureAdvanceEntries
-          .map((e) => '${e.amount.toInt()}\$${e.remarks}')
-          .join('@');
-      final secAdvTotal = _getTotalSecureAdvance();
-
-      // ── Mobilization Advance ──────────────────────────────────────────────
-      final mobAdvAmnt = _mobAdvanceEntries.map((e) => e.amount).join('|');
-      final mobAdvRemks = _mobAdvanceEntries
-          .map((e) => '${e.amount.toInt()}\$${e.remarks}')
-          .join('@');
-      final mobAdvTotal = _getTotalMobAdvance();
-
-      // ── Other Deductions ──────────────────────────────────────────────────
-      final othDedAmnt = _otherdedEntries.map((e) => e.amount).join('|');
-      final othDedRemks = _otherdedEntries
-          .map((e) => '${e.amount.toInt()}\$${e.remarks}')
-          .join('@');
-      final othDedTotal = _otherdedEntries.fold(0.0, (s, e) => s + e.amount);
-
-      // ── Withheld ──────────────────────────────────────────────────────────
-      final whAmnt = _whEntries.map((e) => e.amount).join('|');
-      final whRemks =
-          _whEntries.map((e) => '${e.amount.toInt()}\$${e.remarks}').join('@');
-      final whTotal = _whEntries.fold(0.0, (s, e) => s + e.amount);
-
-      // ── Mobilization Advance Recovery ─────────────────────────────────────
-      final mobAdvRecAmnt = _mobadvrecEntries.map((e) => e.amount).join('|');
-      final mobAdvRecRemks = _mobadvrecEntries
-          .map((e) => '${e.amount.toInt()}\$${e.remarks}')
-          .join('@');
-      final mobAdvRecTotal =
-          _mobadvrecEntries.fold(0.0, (s, e) => s + e.amount);
-
-      // ── Withheld Release ──────────────────────────────────────────────────
-      final whrlAmnt = _whrlEntries.map((e) => e.amount).join('|');
-      final whrlRemks = _whrlEntries
-          .map((e) => '${e.amount.toInt()}\$${e.remarks}')
-          .join('@');
-      final whrlTotal = _whrlEntries.fold(0.0, (s, e) => s + e.amount);
-
-      // ── Net Amount Received ───────────────────────────────────────────────
-      // Pack amount|date|remarks into NETRECDREMKS using @ as section separator
-      // Format: "amt1|amt2@date1|date2@rmk1|rmk2"
-      // NETRECDDT  → null   (decimal? column in DB — cannot store date strings)
-      // OUTSTANDAMNT → single decimal (final outstanding value)
-      final netRecdAmnt = _netamntrecdEntries.map((e) => e.amount).join('|');
-      final netRecdDt = _netamntrecdEntries.map((e) => e.date).join('|');
-      final netRecdRemarks = _netamntrecdEntries
-          .map((e) => '${e.amount.toInt()}-${e.date}-${e.remarks}')
-          .join('@');
-      final netRecdTotal =
-          _netamntrecdEntries.fold(0.0, (s, e) => s + e.amount);
-
-      // ── Build request body ────────────────────────────────────────────────
-      final requestBody = <String, dynamic>{
-        // ── Core fields ────────────────────────────────────────────────────
-        'SBNO': isEditing ? (widget.billingData?.sbno ?? 0) : 0,
-        'CUSID': selectedCustomerId,
-        'PROJID': selectedProjectId,
-        'STAGEIDNAME': _stageEntries
-            .map((e) =>
-                '${e['stageId']}\$${e['stageName']}\$${e['stageRemarks']}')
-            .join('@'), // ← @ as separator like other remarks fields
-
-        'BILLNO': invnoController.text.trim(),
-        'BILLDATE': invDate?.toIso8601String(),
-        'BILLDESC': descController.text.trim(),
-        'PEROFWORK': percentWorkController.text.trim().endsWith('%')
-            ? percentWorkController.text.trim()
-            : '${percentWorkController.text.trim()}%',
-        'WORKDONEAMNT': _parseField(WorkDoneController.text),
-
-        // ── Secure Advance ─────────────────────────────────────────────────
-        // SECADVAMNT  → decimal total (sum of all entries)
-        // SECADVREMKS → "amt1|amt2@rmk1|rmk2"
-        'SECADVAMNT': formatAmount(secAdvTotal),
-        'SECADVREMKS': secAdvRemarks,
-
-        // ── Mobilization Advance ───────────────────────────────────────────
-        'MOBADVAMNT': formatAmount(mobAdvTotal),
-        'MOBADVREMKS': mobAdvRemks,
-
-        // ── Bill Amounts ───────────────────────────────────────────────────
-        'BILLAMNT': _parseField(amountController.text),
-        'GSTPER': double.tryParse(
-          gstController.text.replaceAll('%', '').trim(),
-        ),
-        'GSTAMNT': _parseField(gstAmountController.text)?.toInt(),
-        'TOTBILLAMNT': _parseField(totbillamountController.text)?.toInt(),
-
-        // ── TDS ────────────────────────────────────────────────────────────
-        'TDSAMNT': _parseField(itAmountController.text)?.toInt(),
-        'TDSCGSTAMNT': _parseField(TDSCGSTController.text)?.toInt(),
-        'TDSSGSTAMNT': _parseField(TDSSGSTController.text)?.toInt(),
-
-        // ── Deductions ─────────────────────────────────────────────────────
-        'SECDEPAMNT': _parseField(secdepositController.text)?.toInt(),
-        'LABCESSAMNT': _parseField(labcessController.text)?.toInt(),
-        'MOBINTAMNT': _parseField(mobintController.text)?.toInt(),
-
-        'OTHDEDAMNT': othDedTotal.toInt(),
-        'OTHDEDREMKS': othDedRemks,
-
-        'WHAMNT': whTotal.toInt(),
-        'WHREMKS': whRemks,
-
-        'MOBADVRECAMNT': mobAdvRecTotal.toInt(),
-        'MOBADVRECREMKS': mobAdvRecRemks,
-
-        'WHRLSEAMNT': whrlTotal.toInt(),
-        'WHRLSEREMKS': whrlRemks,
-
-        'TOTDEDAMNT': _parseField(totdedController.text)?.toInt(),
-
-        // ── Net & Outstanding ──────────────────────────────────────────────
-        // NETRECAMNT   → Net Receivable (single decimal)
-        // NETRECDAMNT  → Total Net Amount Received (sum, single decimal)
-        // NETRECDDT    → null (decimal? in DB — cannot store date strings)
-        // NETRECDREMKS → "amt1|amt2@date1|date2@rmk1|rmk2" (all list data packed)
-        // OUTSTANDAMNT → final outstanding (single decimal)
-        'NETRECAMNT': _parseField(netrecController.text)?.toInt(),
-        'NETRECDAMNT': netRecdTotal.toInt(),
-        'NETRECDDT': null,
-        'NETRECDREMKS': netRecdRemarks,
-        'OUTSTANDAMNT': _parseField(osController.text)?.toInt(),
-
-        // ── Audit ──────────────────────────────────────────────────────────
-        'ADDUSER': empCode,
-        if (isEditing) 'EDITUSER': empCode,
-
-        // ── Files ──────────────────────────────────────────────────────────
-        'FILES': uploadFiles?.map((f) => f.toJson()).toList() ?? [],
-        'REMOVEDFILES': _removedFiles.isNotEmpty ? _removedFiles.join(',') : '',
-      };
-
-      print('Request Body: ${jsonEncode(requestBody)}');
-      print('Payload: ${jsonEncode(_stageEntries)}');
-
-      final result = await saveSalesBilling(requestBody);
-
-      if (!mounted) return;
-
-      if (result['Success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(isEditing
-                ? 'Billing Entry Updated Successfully'
-                : 'Billing Entry Saved Successfully'),
-            backgroundColor: Colors.green,
-          ),
-        );
-
-        if (widget.onDataSaved != null) {
-          widget.onDataSaved!();
-        }
-
-        Navigator.pop(context, true);
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['Message'].toString()),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      print('Error in _submitForm: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  String formatAmount(num value) {
-    return value % 1 == 0 ? value.toInt().toString() : value.toString();
   }
 
   Future<void> _loadUserDetails() async {
@@ -2680,6 +661,708 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
     empCode = (await prefsHelper.getEmpCode()) ?? 0;
     empName = (await prefsHelper.getEmpName())!;
     setState(() {});
+  }
+
+  void initializeGrid({bool isViewOnly = false}) {
+    final List<String> columnNames = [
+      'Bill No',
+      'Date',
+      'Bill Description',
+      '% of work',
+      'Work Done value',
+      'Secure Advance',
+      'Mobilisation advance',
+      'Taxable value',
+      'GST',
+      'Total bill amount',
+      'TDS',
+      'TDS CGST',
+      'TDS SGST',
+      'Security deposit',
+      'Labour Cess',
+      'Mobilization Interest',
+      'Other Deduction',
+      'Withheld',
+      'Mobilization Advance Recovery',
+      'Withheld release',
+      'Total Deduction',
+      'Net receivable',
+      'Net amount received',
+      'Date',
+      'Outstanding',
+      'Attachment'
+    ];
+
+    // ── Read-only (auto-calculated) columns ──────────────────────────────────
+    final Set<String> readOnlyFields = {
+      'col5',
+      'col8',
+      'col10',
+      'col11',
+      'col12',
+      'col13',
+      'col14',
+      'col15',
+      'col21',
+      'col22',
+      'col25',
+    };
+
+    final Set<String> percentFields = {'col4', 'col9'};
+
+    final Set<String> numberFields = {
+      'col5',
+      'col6',
+      'col7',
+      'col8',
+      'col10',
+      'col11',
+      'col12',
+      'col13',
+      'col14',
+      'col15',
+      'col16',
+      'col17',
+      'col18',
+      'col19',
+      'col20',
+      'col21',
+      'col22',
+      'col23',
+      'col25',
+      'col26',
+    };
+
+    columns = List.generate(columnNames.length, (index) {
+      final title = columnNames[index];
+      final field = 'col${index + 1}';
+      // ── Force read-only for every column when isViewOnly ─────────────────
+      final isReadOnly = isViewOnly || readOnlyFields.contains(field);
+
+      // ── Attachment column ─────────────────────────────────────────────────
+      if (title == 'Attachment') {
+        return PlutoColumn(
+          title: title,
+          field: field,
+          type: PlutoColumnType.text(),
+          enableEditingMode: false,
+          readOnly: false,
+          width: 120,
+          renderer: (ctx) {
+            final cellValue = ctx.cell.value;
+            final hasAttachment = cellValue != null &&
+                cellValue.toString().trim().isNotEmpty &&
+                cellValue.toString().trim() != 'null';
+
+            return Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (hasAttachment)
+                  InkWell(
+                    onTap: () => _showAttachmentDialog(ctx.row, field),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade100,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.attach_file,
+                              size: 16, color: Colors.green.shade700),
+                          const SizedBox(width: 4),
+                          Text('View',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.green.shade700,
+                                  fontWeight: FontWeight.w500)),
+                        ],
+                      ),
+                    ),
+                  )
+                // ── Hide "Attach" option entirely in view-only mode ─────────
+                else if (!isViewOnly)
+                  InkWell(
+                    onTap: () => _pickAndAttachFile(ctx.row, field),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: Colors.blue.shade200),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.add,
+                              size: 16, color: Colors.blue.shade700),
+                          const SizedBox(width: 4),
+                          Text('Attach',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.blue.shade700,
+                                  fontWeight: FontWeight.w500)),
+                        ],
+                      ),
+                    ),
+                  ),
+                // ── Hide remove "X" in view-only mode ─────────────────────
+                if (hasAttachment && !isViewOnly)
+                  IconButton(
+                    icon:
+                        Icon(Icons.close, size: 16, color: Colors.red.shade400),
+                    onPressed: () => _removeAttachment(ctx.row, field),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+              ],
+            );
+          },
+        );
+      }
+
+      // ── Date columns ─────────────────────────────────────────────────────
+      if (title == 'Date') {
+        return PlutoColumn(
+          title: title,
+          field: field,
+          type: PlutoColumnType.date(),
+          enableEditingMode: !isReadOnly,
+          readOnly: isReadOnly,
+          width: 150,
+          backgroundColor: isReadOnly ? const Color(0xFFF1F5F9) : null,
+          renderer: (ctx) {
+            return Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                ctx.cell.value == null || ctx.cell.value.toString().isEmpty
+                    ? ''
+                    : ctx.cell.value.toString(),
+                style: const TextStyle(fontSize: 13),
+              ),
+            );
+          },
+        );
+      }
+
+      // ── Percent columns ───────────────────────────────────────────────────
+      if (percentFields.contains(field)) {
+        return PlutoColumn(
+          title: title,
+          field: field,
+          type: PlutoColumnType.number(negative: false, format: '#,###.##'),
+          enableEditingMode: !isReadOnly,
+          readOnly: isReadOnly,
+          width: 150,
+          backgroundColor: isReadOnly ? const Color(0xFFF1F5F9) : null,
+          formatter: (value) {
+            if (value == null || value.toString().isEmpty) return '';
+            final num = double.tryParse(value.toString()) ?? 0;
+            if (num == 0) return '';
+            return num == num.truncateToDouble() ? '${num.toInt()}%' : '$num%';
+          },
+          footerRenderer: field == 'col4'
+              ? (rendererContext) {
+                  return PlutoAggregateColumnFooter(
+                    rendererContext: rendererContext,
+                    type: PlutoAggregateColumnType.sum,
+                    format: '#,###.##',
+                    alignment: Alignment.centerRight,
+                    titleSpanBuilder: (text) => [
+                      TextSpan(
+                        text: text.isEmpty ? '' : '$text%',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.indigo.shade900,
+                        ),
+                      ),
+                    ],
+                  );
+                }
+              : null,
+        );
+      }
+
+      // ── Remark-icon columns ────────────────────────────────────────────────
+      if (remarkConfig.containsKey(field)) {
+        final config = remarkConfig[field]!;
+
+        return PlutoColumn(
+          title: title,
+          field: field,
+          type: PlutoColumnType.number(),
+          width: 170,
+          // ── Force non-editable in view-only mode ──────────────────────────
+          enableEditingMode: !isViewOnly,
+          readOnly: isViewOnly,
+          renderer: (ctx) {
+            return Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: isViewOnly
+                        ? null // ← disable tap-to-edit
+                        : () {
+                            stateManager!.setCurrentCell(ctx.cell, ctx.rowIdx);
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              stateManager!.setEditing(true);
+                            });
+                          },
+                    child: Text(
+                      ctx.cell.value == null || ctx.cell.value == 0
+                          ? ''
+                          : formatIndianNumber(
+                              (ctx.cell.value as num).toDouble()),
+                    ),
+                  ),
+                ),
+                // ── In view-only mode, icon still opens dialog but read-only ──
+                InkWell(
+                  onTap: () {
+                    _showAmountRemarksDialog(
+                      row: ctx.row,
+                      amountField: field,
+                      remarksField: config['remark']!,
+                      title: config['title']!,
+                    );
+                  },
+                  child: const Icon(Icons.edit_note,
+                      color: Colors.green, size: 20),
+                ),
+              ],
+            );
+          },
+          footerRenderer: (rendererContext) {
+            return PlutoAggregateColumnFooter(
+              rendererContext: rendererContext,
+              type: PlutoAggregateColumnType.sum,
+              format: '#,##,###',
+              alignment: Alignment.centerRight,
+              titleSpanBuilder: (text) => [
+                TextSpan(
+                  text: text.isEmpty ? '' : '₹ $text',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Colors.indigo.shade900),
+                ),
+              ],
+            );
+          },
+        );
+      }
+
+      // ── Number columns ────────────────────────────────────────────────────
+      if (numberFields.contains(field)) {
+        return PlutoColumn(
+          title: title,
+          field: field,
+          type: PlutoColumnType.number(negative: true, format: '#,###'),
+          enableEditingMode: !isReadOnly,
+          readOnly: isReadOnly,
+          width: 150,
+          backgroundColor: isReadOnly ? const Color(0xFFF1F5F9) : null,
+          renderer: isReadOnly
+              ? (ctx) => Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      ctx.cell.value == 0 || ctx.cell.value == null
+                          ? ''
+                          : '₹ ${formatIndianNumber((ctx.cell.value as num).toDouble())}',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.indigo.shade700,
+                      ),
+                    ),
+                  )
+              : (ctx) => Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      ctx.cell.value == 0 || ctx.cell.value == null
+                          ? ''
+                          : formatIndianNumber(
+                              (ctx.cell.value as num).toDouble()),
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+          footerRenderer: (rendererContext) {
+            return PlutoAggregateColumnFooter(
+              rendererContext: rendererContext,
+              type: PlutoAggregateColumnType.sum,
+              format: '#,##,###',
+              alignment: Alignment.centerRight,
+              titleSpanBuilder: (text) => [
+                TextSpan(
+                  text: text.isEmpty ? '' : '₹ $text',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.indigo.shade900,
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      }
+
+      // ── Text columns ──────────────────────────────────────────────────────
+      return PlutoColumn(
+        title: title,
+        field: field,
+        type: PlutoColumnType.text(),
+        enableEditingMode: !isReadOnly,
+        readOnly: isReadOnly,
+        width: 150,
+        footerRenderer: title == 'Bill Description'
+            ? (rendererContext) {
+                return const Align(
+                  alignment: Alignment.centerRight,
+                  child: Padding(
+                    padding: EdgeInsets.only(right: 8),
+                    child: Text(
+                      'TOTAL',
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87),
+                    ),
+                  ),
+                );
+              }
+            : null,
+      );
+    });
+
+    columns.addAll([
+      PlutoColumn(
+          title: 'SBNO',
+          field: 'colSBNO',
+          type: PlutoColumnType.number(),
+          hide: true),
+      PlutoColumn(
+          title: 'SecAdvRemark',
+          field: 'col6Remark',
+          type: PlutoColumnType.text(),
+          hide: true),
+      PlutoColumn(
+          title: 'MobAdvRemark',
+          field: 'col7Remark',
+          type: PlutoColumnType.text(),
+          hide: true),
+      PlutoColumn(
+          title: 'OtherDedRemark',
+          field: 'col17Remark',
+          type: PlutoColumnType.text(),
+          hide: true),
+      PlutoColumn(
+          title: 'WithheldRemark',
+          field: 'col18Remark',
+          type: PlutoColumnType.text(),
+          hide: true),
+      PlutoColumn(
+          title: 'MobAdvRecoveryRemark',
+          field: 'col19Remark',
+          type: PlutoColumnType.text(),
+          hide: true),
+      PlutoColumn(
+          title: 'WithheldReleaseRemark',
+          field: 'col20Remark',
+          type: PlutoColumnType.text(),
+          hide: true),
+      PlutoColumn(
+          title: 'TotalDeductionRemark',
+          field: 'col21Remark',
+          type: PlutoColumnType.text(),
+          hide: true),
+      PlutoColumn(
+          title: 'NetAmountReceivedRemark',
+          field: 'col23Remark',
+          type: PlutoColumnType.text(),
+          hide: true),
+      PlutoColumn(
+          title: 'FileName',
+          field: 'col25FileName',
+          type: PlutoColumnType.text(),
+          hide: true),
+      PlutoColumn(
+          title: 'FileBase64',
+          field: 'col25Base64',
+          type: PlutoColumnType.text(),
+          hide: true),
+      PlutoColumn(
+          title: 'FileType',
+          field: 'col25FileType',
+          type: PlutoColumnType.text(),
+          hide: true),
+    ]);
+
+    rows = [];
+  }
+
+  void addNewRow() {
+    final Map<String, PlutoCell> cells = {};
+
+    for (final col in columns) {
+      switch (col.field) {
+        case 'col1':
+          cells[col.field] = PlutoCell(value: '');
+          break;
+        case 'col2':
+          cells[col.field] = PlutoCell(value: '');
+          break;
+        case 'col3':
+          cells[col.field] = PlutoCell(value: '');
+          break;
+        case 'col4':
+          cells[col.field] = PlutoCell(value: 0);
+          break;
+        case 'col5':
+          cells[col.field] = PlutoCell(value: 0);
+          break;
+        case 'col6':
+          cells[col.field] = PlutoCell(value: 0);
+          break;
+        case 'col7':
+          cells[col.field] = PlutoCell(value: 0);
+          break;
+        case 'col8':
+          cells[col.field] = PlutoCell(value: 0);
+          break;
+        case 'col9':
+          cells[col.field] = PlutoCell(value: 18);
+          break;
+        case 'col10':
+          cells[col.field] = PlutoCell(value: 0);
+          break;
+        case 'col11':
+          cells[col.field] = PlutoCell(value: 0);
+          break;
+        case 'col12':
+          cells[col.field] = PlutoCell(value: 0);
+          break;
+        case 'col13':
+          cells[col.field] = PlutoCell(value: 0);
+          break;
+        case 'col14':
+          cells[col.field] = PlutoCell(value: 0);
+          break;
+        case 'col15':
+          cells[col.field] = PlutoCell(value: 0);
+          break;
+        case 'col16':
+          cells[col.field] = PlutoCell(value: 0);
+          break;
+        case 'col17':
+          cells[col.field] = PlutoCell(value: 0);
+          break;
+        case 'col18':
+          cells[col.field] = PlutoCell(value: 0);
+          break;
+        case 'col19':
+          cells[col.field] = PlutoCell(value: 0);
+          break;
+        case 'col20':
+          cells[col.field] = PlutoCell(value: 0);
+          break;
+        case 'col21':
+          cells[col.field] = PlutoCell(value: 0);
+          break;
+        case 'col22':
+          cells[col.field] = PlutoCell(value: 0);
+          break;
+        case 'col23':
+          cells[col.field] = PlutoCell(value: 0);
+          break;
+        case 'col24':
+          cells[col.field] = PlutoCell(value: '');
+          break;
+        case 'col25':
+          cells[col.field] = PlutoCell(value: 0);
+          break; // ✅ Outstanding
+
+        case 'col26':
+          cells[col.field] = PlutoCell(value: '');
+          break; // ✅ Attachment
+
+        // ✅ Hidden remark columns
+        case 'col6Remark':
+          cells[col.field] = PlutoCell(value: '');
+          break;
+        case 'col7Remark':
+          cells[col.field] = PlutoCell(value: '');
+          break;
+        case 'col17Remark':
+          cells[col.field] = PlutoCell(value: '');
+          break;
+        case 'col18Remark':
+          cells[col.field] = PlutoCell(value: '');
+          break;
+        case 'col19Remark':
+          cells[col.field] = PlutoCell(value: '');
+          break;
+        case 'col20Remark':
+          cells[col.field] = PlutoCell(value: '');
+          break;
+        case 'col21Remark':
+          cells[col.field] = PlutoCell(value: '');
+          break;
+        case 'col23Remark':
+          cells[col.field] = PlutoCell(value: '');
+          break;
+
+        // ✅ Hidden attachment columns — MUST be here
+        case 'col25FileName':
+          cells[col.field] = PlutoCell(value: '');
+          break;
+        case 'col25Base64':
+          cells[col.field] = PlutoCell(value: '');
+          break;
+        case 'col25FileType':
+          cells[col.field] = PlutoCell(value: '');
+          break;
+
+        // ✅ Hidden SBNO column
+        case 'colSBNO':
+          cells[col.field] = PlutoCell(value: 0);
+          break;
+
+        default:
+          cells[col.field] = PlutoCell(value: '');
+          break;
+      }
+    }
+
+    // ✅ ONLY use stateManager.appendRows — never PlutoRow directly
+    if (stateManager != null) {
+      final newRow = PlutoRow(cells: cells);
+      stateManager!.appendRows([newRow]);
+      setState(() => rows = stateManager!.rows);
+    }
+  }
+
+  void _onGridChanged(PlutoGridOnChangedEvent event) {
+    final row = event.row;
+    _calculateRowTotals(row);
+    setState(() {});
+  }
+
+  void _calculateRowTotals(PlutoRow row) {
+    // ── Helper: get the real field name for a given column title ───────────
+    String _fieldFor(String title) {
+      return columns.firstWhere((c) => c.title == title).field;
+    }
+
+    double _cell(String field) {
+      final v = row.cells[field]?.value;
+      if (v == null) return 0;
+      return double.tryParse(v.toString()) ?? 0;
+    }
+
+    void _set(String field, double value) {
+      row.cells[field]?.value = value.roundToDouble();
+    }
+
+    // ── Step 1: Work Done ────────────────────────────────────────────────────
+    final woValue = _woValueInclGst ?? 0.0;
+    final perWork = _cell(_fPerWork);
+    final workDone =
+        woValue > 0 && perWork > 0 ? (woValue * perWork) / 100 : 0.0;
+    _set(_fWorkDone, workDone);
+
+    // ── Step 2: Taxable Value ─────────────────────────────────────────────────
+    final secAdv = _cell(_fSecAdv);
+    final mobAdv = _cell(_fMobAdv);
+    final taxable = workDone + secAdv + mobAdv;
+    _set(_fTaxable, taxable);
+
+    // ── Step 3: TDS CGST & SGST = 1% of Work Done ────────────────────────────
+    final tdsCGST = workDone * 0.01;
+    final tdsSGST = workDone * 0.01;
+    _set(_fTDSCGST, tdsCGST);
+    _set(_fTDSSGST, tdsSGST);
+
+    // ── Step 4: GST Amount & Total Bill Amount ────────────────────────────────
+    final gstPct = _cell(_fGST);
+    double totBill = 0.0;
+    if (taxable > 0 && gstPct > 0) {
+      final gstAmt = (taxable * gstPct / 100).roundToDouble();
+      totBill = taxable.roundToDouble() + gstAmt;
+      _set(_fTotBill, totBill);
+    } else {
+      _set(_fTotBill, 0.0);
+    }
+
+    // ── Step 5: Labour Cess = 1% of Total Bill Amount ────────────────────────
+    final labCess = (totBill * 0.01).roundToDouble();
+    _set(_fLabCess, labCess);
+
+    // ── Step 6: TDS = 2% of Taxable Value ────────────────────────────────────
+    final tds = taxable > 0 ? (taxable * 0.02).roundToDouble() : 0.0;
+    _set(_fTDS, tds);
+
+    // ── Step 7: Security Deposit = 5% of Taxable Value ───────────────────────
+    final secDep = taxable > 0 ? (taxable * 0.05).roundToDouble() : 0.0;
+    _set(_fSecDep, secDep);
+
+    // ── Step 8: Total Deduction ───────────────────────────────────────────────
+    final mobInt = _cell(_fMobInt);
+    final othDed = _cell(_fOthDed);
+    final withheld = _cell(_fWithheld);
+    final mobAdvRec = _cell(_fMobAdvRec);
+    final whRelease = _cell(_fWhRelease);
+
+    final totDed = tds +
+        tdsCGST +
+        tdsSGST +
+        secDep +
+        labCess +
+        mobInt +
+        othDed +
+        withheld +
+        mobAdvRec -
+        whRelease;
+    _set(_fTotDed, totDed);
+
+    // ── Step 9: Net Receivable ────────────────────────────────────────────────
+    final netRec = totBill > 0 ? (totBill - totDed) : 0.0;
+    _set(_fNetRec, netRec);
+
+    // ── Step 10: Outstanding — written via title lookup, immune to col swaps ──
+    final netAmtRecd = _cell(_fNetAmtRecd);
+    final outstanding = netRec - netAmtRecd;
+    final outstandingField = _fieldFor('Outstanding'); // ← always correct
+    row.cells[outstandingField]?.value = outstanding.roundToDouble();
+
+    // ── Force grid UI refresh ─────────────────────────────────────────────────
+    stateManager?.notifyListeners();
+  }
+
+  void addMultipleRows(int count) {
+    setState(() {
+      for (int i = 0; i < count; i++) {
+        rows.add(
+          PlutoRow(
+            cells: {
+              for (int col = 1; col <= columns.length; col++)
+                'col$col': PlutoCell(value: ''),
+            },
+          ),
+        );
+      }
+    });
+  }
+
+  void deleteRow(int rowIndex) {
+    setState(() {
+      if (rows.isNotEmpty) {
+        rows.removeAt(rowIndex);
+      }
+    });
   }
 
   InputDecoration _inputDecoration(String label) => InputDecoration(
@@ -2695,6 +1378,30 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
           ),
         ),
       );
+
+  Future<void> loadCustomers() async {
+    try {
+      final response =
+          await http.post(ApiUtils.getUri('ExistingChecklistCustomers'));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        if (data['Success'] == true) {
+          final List list = data['CustomerDetails'];
+
+          setState(() {
+            customerList =
+                list.map((e) => ChecklistCustomer.fromJson(e)).toList();
+            debugPrint(
+                'Customer list loaded: ${customerList.length} customers');
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint(e.toString());
+    }
+  }
 
   Future<void> loadProjects(int customerId) async {
     try {
@@ -2724,1071 +1431,95 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
     }
   }
 
-  Future<void> loadCustomers() async {
-    try {
-      final response =
-          await http.post(ApiUtils.getUri('ExistingChecklistCustomers'));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-
-        if (data['Success'] == true) {
-          final List list = data['CustomerDetails'];
-
-          setState(() {
-            customerList =
-                list.map((e) => ChecklistCustomer.fromJson(e)).toList();
-            debugPrint(
-                'Customer list loaded: ${customerList.length} customers');
-          });
-        }
-      }
-    } catch (e) {
-      debugPrint(e.toString());
-    }
-  }
-
-  Future<void> loadStagesFromApi(int customerId, int projectId) async {
-    setState(() {
-      isLoadingStages = true;
-      dynamicStages = {};
-      selectedstageId = null;
-      stageController.clear();
-    });
-
-    try {
-      final uri = ApiUtils.getUri(
-          'GetBillingStages'); // ← remove .replace(queryParameters)
-
-      final response = await http.post(
-        uri,
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: jsonEncode({
-          // ← send as POST body
-          'CUSID': customerId,
-          'PROJID': projectId,
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-
-        if (data['Success'] == true) {
-          final List stages = data['Data'] ?? [];
-
-          final loadedStages =
-              stages.map((s) => SalesStagelistModel.fromJson(s)).toList();
-
-          setState(() {
-            stageList = loadedStages;
-            for (var stage in stageList) {
-              if (stage.stageid != null && stage.stagename != null) {
-                dynamicStages[stage.stageid!] = stage.stagename!;
-              }
-            }
-          });
-        } else {
-          debugPrint('GetBillingStages failed: ${data['Message']}');
-        }
-      }
-    } catch (e) {
-      print("Exception: $e");
-    } finally {
-      setState(() {
-        isLoadingStages = false;
-      });
-    }
-  }
-
-  Widget _buildStageInputSection() {
-    final isViewOnly = widget.isReadOnly == true;
-    final hasStages = dynamicStages.isNotEmpty;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── 1. Stage Dropdown ────────────────────────────────────
-            SizedBox(
-              width: 290,
-              child: isLoadingStages
-                  ? const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(20.0),
-                        child: CircularProgressIndicator(),
-                      ),
-                    )
-                  : DropdownButtonFormField<String>(
-                      value: selectedstageId,
-                      decoration: _inputDecoration("Select Stage").copyWith(
-                        suffixIcon: (!isViewOnly && selectedstageId != null)
-                            ? IconButton(
-                                onPressed: () {
-                                  setState(() {
-                                    selectedstageId = null;
-                                    stageController.clear();
-                                  });
-                                },
-                                icon: const Icon(Icons.clear, size: 18),
-                                padding: EdgeInsets.zero,
-                                tooltip: 'Clear selection',
-                              )
-                            : null,
-                      ),
-                      items: dynamicStages.entries.map((entry) {
-                        return DropdownMenuItem<String>(
-                          value: entry.key,
-                          child: Text(entry.key),
-                        );
-                      }).toList(),
-                      onChanged: (isViewOnly || !hasStages || isLoadingStages)
-                          ? null
-                          : (value) {
-                              setState(() {
-                                selectedstageId = value;
-                                if (value != null &&
-                                    dynamicStages.containsKey(value)) {
-                                  stageController.text = dynamicStages[value]!;
-                                }
-                              });
-                            },
-                      validator: (value) {
-                        if (!isViewOnly &&
-                            hasStages &&
-                            value == null &&
-                            stageController.text.trim().isEmpty &&
-                            _stageEntries.isEmpty) {
-                          // ← only validate if no entries added yet
-                          return 'Please select a stage or enter custom stage name';
-                        }
-                        return null;
-                      },
-                    ),
-            ),
-            const SizedBox(width: 12),
-
-            // ── 2. Stage Name ────────────────────────────────────────
-            SizedBox(
-              width: 350,
-              child: TextFormField(
-                controller: stageController,
-                decoration: InputDecoration(
-                  labelText: "Stage Name",
-                  hintText: "Enter custom stage name",
-                  border: const OutlineInputBorder(),
-                  suffixIcon: stageController.text.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear, size: 18),
-                          onPressed: () {
-                            setState(() {
-                              stageController.clear();
-                              selectedstageId = null;
-                            });
-                          },
-                          padding: EdgeInsets.zero,
-                          tooltip: 'Clear',
-                        )
-                      : null,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 14,
-                  ),
-                ),
-                minLines: 1,
-                maxLines: null,
-                keyboardType: TextInputType.multiline,
-                textInputAction: TextInputAction.newline,
-                readOnly: isViewOnly,
-                enabled: !isViewOnly,
-                onChanged: (value) {
-                  if (value.isNotEmpty && selectedstageId != null) {
-                    setState(() => selectedstageId = null);
-                  }
-                },
-              ),
-            ),
-            const SizedBox(width: 14),
-
-            // ── 2b. Stage Remarks ────────────────────────────────────  ← ADD THIS
-            SizedBox(
-              width: 350,
-              child: TextFormField(
-                controller: stageRemarksController,
-                inputFormatters: [
-                  UpperCaseTextFormatter(),
-                ],
-                decoration: InputDecoration(
-                  labelText: "Remarks",
-                  hintText: "Enter remarks",
-                  border: const OutlineInputBorder(),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  suffixIcon:
-                      stageRemarksController.text.isNotEmpty && !isViewOnly
-                          ? IconButton(
-                              icon: const Icon(Icons.clear, size: 18),
-                              onPressed: () {
-                                setState(() {
-                                  stageRemarksController.clear();
-                                });
-                              },
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Clear value',
-                            )
-                          : null,
-                ),
-                readOnly: isViewOnly,
-                enabled: !isViewOnly,
-                onChanged: (_) => setState(() {}),
-              ),
-            ),
-            const SizedBox(width: 14),
-
-            // ── 3. Add Button + Total stacked ────────────────────────
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (!isViewOnly)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: ElevatedButton(
-                      onPressed: _addStageEntry,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 20, vertical: 14),
-                      ),
-                      child: const Text('Add'),
-                    ),
-                  ),
-
-                // Info message when no stages exist
-                if (!isLoadingStages &&
-                    !hasStages &&
-                    selectedCustomerId != null &&
-                    selectedProjectId != null &&
-                    !isViewOnly) ...[
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: 260,
-                    child: Text(
-                      'No stages found. Enter a custom stage name.',
-                      style: TextStyle(color: Colors.orange[700], fontSize: 12),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-
-            const SizedBox(width: 240),
-
-            // ── 4. Stage Table (RIGHT side) ──────────────────────────
-            if (_stageEntries.isNotEmpty)
-              _buildStageTable(isViewOnly: isViewOnly),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStageTable({required bool isViewOnly}) {
-    Widget badge(int i) => Container(
-          width: 26,
-          height: 26,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: const Color(0xFFEFF3FA),
-            borderRadius: BorderRadius.circular(7),
-          ),
-          child: Text('${i + 1}',
-              style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.grey.shade600)),
-        );
-
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 600), // ← limit table width
-      child: Card(
-        elevation: 0,
-        margin: EdgeInsets.zero,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: Colors.grey.shade200),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Theme(
-          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: DataTable(
-              columnSpacing: 16, // ← reduce from 20
-              horizontalMargin: 12, // ← reduce from 16
-              headingRowHeight: 46,
-              dataRowMinHeight: 50,
-              dataRowMaxHeight: double.infinity,
-              headingRowColor: WidgetStateProperty.all(const Color(0xFFF8FAFC)),
-              columns: [
-                const DataColumn(
-                  label: SizedBox(
-                    width: 30, // ← reduce from 36
-                    child: Text('S.No',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 13,
-                            color: Color(0xFF1E293B))),
-                  ),
-                ),
-                const DataColumn(
-                  label: Text('Stage ID',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13,
-                          color: Color(0xFF1E293B))),
-                ),
-                const DataColumn(
-                  label: Text('Stage Name',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13,
-                          color: Color(0xFF1E293B))),
-                ),
-                const DataColumn(
-                  label: Text('Remarks',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13,
-                          color: Color(0xFF1E293B))),
-                ),
-                if (!isViewOnly)
-                  const DataColumn(
-                    label: SizedBox(
-                      width: 70, // ← reduce from 80
-                      child: Text('Actions',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 13,
-                              color: Color(0xFF1E293B))),
-                    ),
-                  ),
-              ],
-              rows: List.generate(_stageEntries.length, (i) {
-                final entry = _stageEntries[i];
-                return DataRow(
-                  color: WidgetStateProperty.all(
-                      i % 2 == 0 ? Colors.white : const Color(0xFFFAFBFD)),
-                  cells: [
-                    DataCell(badge(i)),
-                    DataCell(Text(
-                      entry['stageId']!.isEmpty ? '—' : entry['stageId']!,
-                      style: const TextStyle(
-                          fontSize: 13, color: Color(0xFF64748B)),
-                    )),
-                    DataCell(Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      child: SizedBox(
-                        width: 120, // ← reduce from 180
-                        child: Text(entry['stageName']!,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                              color: Color(0xFF1E293B),
-                            ),
-                            softWrap: true,
-                            overflow: TextOverflow.visible),
-                      ),
-                    )),
-                    DataCell(Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      child: SizedBox(
-                        width: 120, // ← reduce from 180
-                        child: Text(
-                          entry['stageRemarks']!.isEmpty
-                              ? '—'
-                              : entry['stageRemarks']!,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w400,
-                            color: Color(0xFF64748B),
-                          ),
-                          softWrap: true,
-                          overflow: TextOverflow.visible,
-                        ),
-                      ),
-                    )),
-                    if (!isViewOnly)
-                      DataCell(Row(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          _ActionIconButton(
-                            icon: Icons.edit_outlined,
-                            color: const Color(0xFF2563EB),
-                            tooltip: 'Edit',
-                            onPressed: () {
-                              stageController.text = entry['stageName']!;
-                              stageRemarksController.text =
-                                  entry['stageRemarks'] ?? '';
-                              setState(() {
-                                selectedstageId = entry['stageId']!.isEmpty
-                                    ? null
-                                    : entry['stageId'];
-                                _stageEntries.removeAt(i);
-                              });
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                      'Edit the entry and click Add to update'),
-                                  backgroundColor: Colors.orange,
-                                  duration: Duration(seconds: 2),
-                                ),
-                              );
-                            },
-                          ),
-                          const SizedBox(width: 6),
-                          _ActionIconButton(
-                            icon: Icons.delete_outline,
-                            color: const Color(0xFFDC2626),
-                            tooltip: 'Delete',
-                            onPressed: () {
-                              setState(() => _stageEntries.removeAt(i));
-                              ScaffoldMessenger.of(context)
-                                  .showSnackBar(SnackBar(
-                                content: Text(
-                                    'Deleted stage: ${entry['stageName']}'),
-                                backgroundColor: Colors.red,
-                                duration: const Duration(seconds: 1),
-                              ));
-                            },
-                          ),
-                        ],
-                      )),
-                  ],
-                );
-              }),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _addStageEntry() {
-    final stageId = selectedstageId ?? '';
-    final stageName = stageController.text.trim();
-    final stageRemarks = stageRemarksController.text.trim(); // ← add
-
-    if (stageName.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Please enter or select a stage name'),
-        backgroundColor: Colors.red,
-      ));
-      return;
-    }
-
-    setState(() {
-      _stageEntries.add({
-        'stageId': stageId,
-        'stageName': stageName,
-        'stageRemarks': stageRemarks, // ← add
-      });
-      selectedstageId = null;
-      stageController.clear();
-      stageRemarksController.clear(); // ← add
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('Stage added: $stageName'),
-      backgroundColor: Colors.green,
-    ));
-  }
-
-  Future<void> _selectDate(BuildContext context, bool isInvDate) async {
-    final DateTime now = DateTime.now();
-
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: isInvDate ? (invDate ?? now) : (recDate ?? now),
-      firstDate: DateTime(1900),
-      lastDate: DateTime(2100),
-    );
-
-    if (picked != null) {
-      setState(() {
-        if (isInvDate) {
-          invDate = picked;
-          _invDateController.text =
-              DateFormat('yyyy-MM-dd').format(picked); // ← add
-        } else {
-          recDate = picked;
-          _recDateController.text =
-              DateFormat('yyyy-MM-dd').format(picked); // ← add
-        }
-      });
-    }
-  }
-
-  Widget _buildAttachCard() {
-    // Helper to check if we're on Android specifically
-
-    return Card(
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(8.0),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            // Files button - available on all platforms
-            _buildAttachButton(
-              icon: Icons.attach_file,
-              label: 'Files',
-              onPressed: pickFiles,
-              color: AppColors.primaryLight,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAttachButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback onPressed,
-    required Color color,
-  }) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        IconButton(
-          icon: Icon(icon),
-          onPressed: onPressed,
-          color: color,
-        ),
-        Text(label, style: TextStyle(fontSize: 12)),
-      ],
-    );
-  }
-
-  Future<void> pickFiles() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
-      allowMultiple: true,
-      allowedExtensions: [
-        'jpg',
-        'jpeg',
-        'png',
-        'pdf',
-        'doc',
-        'docx',
-        'dwg',
-        'dot', 'dotx', // Word
-        'xls', 'xlsx', 'xlsm', 'xlsb', 'csv', // Excel
-      ],
-      type: FileType.custom,
-      withData: true,
-    );
-
-    if (result != null) {
-      List<PlatformFile> newFiles = [];
-
-      for (var file in result.files) {
-        if (['jpg', 'jpeg', 'png'].contains(file.extension?.toLowerCase())) {
-          final bytes = file.bytes;
-          if (bytes == null) continue;
-
-          final croppedBytes = await Navigator.push<Uint8List>(
-            context,
-            MaterialPageRoute(
-              builder: (context) => CropScreen(
-                imageBytes: bytes,
-                onCropped: (croppedBytes) {},
-              ),
-            ),
-          );
-
-          if (croppedBytes != null) {
-            newFiles.add(PlatformFile(
-              name: 'cropped_${file.name}',
-              path: kIsWeb
-                  ? null
-                  : '${(await getTemporaryDirectory()).path}/cropped_${file.name}',
-              bytes: croppedBytes,
-              size: croppedBytes.length,
-            ));
-          }
-        } else {
-          newFiles.add(file);
-        }
-      }
-
-      setState(() {
-        _attachedFiles.addAll(newFiles);
-      });
-    }
-  }
-
-  Widget _buildAttachmentItem(PlatformFile file) {
-    return Card(
-      margin: EdgeInsets.symmetric(vertical: 4),
-      child: ListTile(
-        leading: FutureBuilder<Widget>(
-          future: _generateThumbnail(file),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.done &&
-                snapshot.hasData) {
-              return Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(4),
-                  color: Colors.grey[200],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: snapshot.data,
-                ),
-              );
-            }
-            return Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(4),
-                color: Colors.grey[200],
-              ),
-              child: Center(child: CircularProgressIndicator()),
-            );
-          },
-        ),
-        title: Text(file.name, overflow: TextOverflow.ellipsis),
-        subtitle: Text('${(file.size / 1024).toStringAsFixed(1)} KB'),
-        trailing: IconButton(
-          icon: Icon(Icons.close),
-          onPressed: () => setState(() => _attachedFiles.remove(file)),
-        ),
-        onTap: () => _previewFile(file),
-      ),
-    );
-  }
-
-  Future<Widget> _generateThumbnail(PlatformFile file) async {
-    final extension = file.name.split('.').last.toLowerCase();
-
-    // For all platforms, just show icons (no thumbnails)
-    if (['jpg', 'jpeg', 'png', 'gif', 'dwg'].contains(extension)) {
-      return _buildFileIcon(Icons.image, Colors.amber);
-    } else if (['pdf'].contains(extension)) {
-      return _buildFileIcon(Icons.picture_as_pdf, Colors.red);
-    } else if (['doc', 'docx'].contains(extension)) {
-      return _buildFileIcon(Icons.description, Colors.blue);
-    } else if (['xls', 'xlsx', 'xlsm', 'xlsb', 'csv'].contains(extension)) {
-      return _buildFileIcon(Icons.table_chart, Colors.green);
-    }
-
-    // Default file icon
-    return _buildFileIcon(Icons.insert_drive_file, Colors.grey);
-  }
-
-  Future<void> _previewFile(PlatformFile file) async {
-    final extension = file.name.split('.').last.toLowerCase();
-
-    if (['jpg', 'jpeg', 'png', 'gif'].contains(extension)) {
-      _showImagePreview(file);
-    } else if (['pdf'].contains(extension)) {
-      _showPdfPreview(file);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Preview not available for this file type')));
-    }
-  }
-
-  Widget _buildFileIcon(IconData icon, Color color) {
+  Widget _buildEmptyState({bool isViewOnly = false}) {
     return Container(
-      width: 48,
-      height: 48,
       decoration: BoxDecoration(
-        color: color.withOpacity(0.2),
+        border: Border.all(color: Colors.grey.shade300),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Center(
-        child: Icon(icon, size: 24, color: color),
-      ),
-    );
-  }
-
-  void _showImagePreview(PlatformFile file) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => Scaffold(
-          appBar: AppBar(title: Text(file.name)),
-          body: Center(
-            child: InteractiveViewer(
-              panEnabled: true,
-              minScale: 0.5,
-              maxScale: 3.0,
-              child: file.bytes != null
-                  ? Image.memory(file.bytes!)
-                  : (!kIsWeb && file.path != null)
-                      ? Image.file(File(file.path!))
-                      : Container(),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.table_chart,
+              size: 80,
+              color: Colors.grey.shade400,
             ),
-          ),
+            const SizedBox(height: 16),
+            Text(
+              'No rows added yet',
+              style: TextStyle(
+                fontSize: 18,
+                color: Colors.grey.shade600,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (!isViewOnly)
+              Text(
+                'Click the + button in the app bar to add a row',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey.shade500,
+                ),
+              ),
+            const SizedBox(height: 24),
+            if (!isViewOnly) ...[
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: () {
+                  if (selectedCustomerId == null || selectedProjectId == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Please select Customer and Site first.'),
+                        backgroundColor: Colors.orange,
+                      ),
+                    );
+                    return;
+                  }
+                  addNewRow();
+                },
+                icon: const Icon(Icons.add),
+                label: const Text('Add Row'),
+                style: ElevatedButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                ),
+              ),
+            ]
+          ],
         ),
       ),
     );
   }
 
-  void _showPdfPreview(PlatformFile file) async {
-    try {
-      if (kIsWeb) {
-        final blob = html.Blob([file.bytes], 'application/pdf');
-        final url = html.Url.createObjectUrlFromBlob(blob);
-        html.window.open(url, '_blank');
-      } else if (io.Platform.isWindows ||
-          io.Platform.isMacOS ||
-          io.Platform.isLinux) {
-        // Save to temp directory and open with default application
-        final tempDir = io.Directory.systemTemp;
-        final tempFile = io.File(path.join(tempDir.path, file.name));
-        await tempFile.writeAsBytes(file.bytes!);
+  Future<void> selectDateForCell(
+    PlutoRow row,
+    PlutoColumn column,
+  ) async {
+    final String cellValue = row.cells[column.field]?.value?.toString() ?? '';
 
-        final uri = Uri.file(tempFile.path);
-        if (await canLaunchUrl(uri)) {
-          await launchUrl(uri);
-        } else {
-          throw Exception('Could not open PDF file');
-        }
-      } else {
-        // Mobile implementation
-        final path =
-            file.path ?? (await _saveToFile(file.name, file.bytes!)).path;
+    DateTime? currentDate;
 
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => Scaffold(
-              appBar: AppBar(title: Text(file.name)),
-              body: PDFView(
-                filePath: path,
-                enableSwipe: true,
-                swipeHorizontal: false,
-              ),
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to preview PDF: $e')),
-      );
+    if (cellValue.isNotEmpty) {
+      currentDate = DateTime.tryParse(cellValue);
     }
-  }
 
-  Future<List<FileUploadModel>> filesToBase64(List<File> pickedFiles) async {
-    List<FileUploadModel> result = [];
-    for (var file in pickedFiles) {
-      final bytes = await file.readAsBytes();
-      final base64Str = base64Encode(bytes);
-      final filename = file.path.split('/').last;
-      result.add(FileUploadModel(filename: filename, filedata: base64Str));
-    }
-    return result;
-  }
+    final DateTime pickedDate = await showDatePicker(
+          context: context,
+          initialDate: currentDate ?? DateTime.now(),
+          firstDate: DateTime(1900),
+          lastDate: DateTime(2100),
+        ) ??
+        (currentDate ?? DateTime.now());
 
-  Future<void> _loadBillingData() async {
-    if (widget.billingData != null) {
-      final data = widget.billingData!;
+    setState(() {
+      row.cells[column.field]!.value =
+          DateFormat('yyyy-MM-dd').format(pickedDate);
+    });
 
-      debugPrint('===== _loadBillingData START =====');
-      debugPrint('Customer ID from data: ${data.cusid}');
-      debugPrint('Project ID from data: ${data.projid}');
-      debugPrint('Customer list length: ${customerList.length}');
-
-      // Wait for customerList if empty
-      if (customerList.isEmpty && data.cusid != null) {
-        debugPrint('Customer list empty, waiting for customers...');
-        await loadCustomers();
-      }
-
-      // Load customer with proper name
-      if (data.cusid != null) {
-        selectedCustomerId = data.cusid;
-
-        // Find customer from customerList
-        final customer = customerList.firstWhere(
-          (c) => c.customerId == data.cusid,
-          orElse: () {
-            debugPrint(
-                'Customer not found in customerList, will fetch from API');
-            return ChecklistCustomer(customerId: 0, companyName: '');
-          },
-        );
-
-        if (customer.customerId > 0 && customer.companyName.isNotEmpty) {
-          customerController.text =
-              "${customer.customerId} - ${customer.companyName}";
-          debugPrint('Customer name set to: ${customerController.text}');
-        } else {
-          // If customer not found, fetch from API
-          debugPrint('Customer not found, fetching from API...');
-          await _fetchAndSetCustomerNameForBilling(data.cusid!);
-        }
-
-        // Load projects for this customer
-        await loadProjects(data.cusid!);
-      }
-
-      // Load project with proper name
-      if (data.projid != null) {
-        selectedProjectId = data.projid;
-
-        // Find project from projectList
-        final project = projectList.firstWhere(
-          (p) => p.projectId == data.projid,
-          orElse: () {
-            debugPrint('Project not found in projectList');
-            return Project(projectId: 0, projectName: '');
-          },
-        );
-
-        if (project.projectId > 0 && project.projectName.isNotEmpty) {
-          siteController.text = "${project.projectId} - ${project.projectName}";
-          debugPrint('Project name set to: ${siteController.text}');
-        } else {
-          // If project not found, set ID only and try to fetch
-          siteController.text = data.projid.toString();
-          if (data.cusid != null) {
-            await _fetchAndSetProjectNameForBilling(data.cusid!, data.projid!);
-          }
-        }
-
-        if (selectedCustomerId != null && selectedProjectId != null) {
-          await loadStagesFromApi(selectedCustomerId!, selectedProjectId!)
-              .then((_) {
-            if (data.stageidname != null &&
-                dynamicStages.containsKey(data.stageidname)) {
-              setState(() {
-                selectedstageId = data.stageidname;
-                stageController.text = dynamicStages[data.stageidname] ?? '';
-              });
-            } else if (data.stageidname != null) {
-              stageController.text = data.stageidname ?? '';
-              selectedstageId = null;
-            }
-          });
-        }
-      }
-
-      // Load billing details
-      invnoController.text = data.billno ?? '';
-      descController.text = data.billdesc ?? '';
-      invDate = data.billdate;
-      recDate = data.recdate;
-
-      // Load amounts
-      amountController.text = data.billamnt != null
-          ? formatIndianNumber(data.billamnt!.round())
-          : '';
-      gstController.text = data.gstper?.toString() ?? '18';
-      gstAmountController.text =
-          data.gstamnt != null ? formatIndianNumber(data.gstamnt!.round()) : '';
-      totbillamountController.text = data.billtotamnt != null
-          ? formatIndianNumber(data.billtotamnt!.round())
-          : '';
-
-      itController.text = data.itper != null ? '${data.itper}%' : '2%';
-      itAmountController.text =
-          data.itamnt != null ? formatIndianNumber(data.itamnt!.round()) : '';
-
-      retentionController.text =
-          data.retnper != null ? '${data.retnper}%' : '5%';
-      secdepositController.text = data.retnamnt != null
-          ? formatIndianNumber(data.retnamnt!.round())
-          : '';
-
-      otherDeductionController.text =
-          data.dedamnt != null ? formatIndianNumber(data.dedamnt!.round()) : '';
-      whController.text =
-          data.whamnt != null ? formatIndianNumber(data.whamnt!.round()) : '';
-      whrlController.text = data.whrlseamnt != null
-          ? formatIndianNumber(data.whrlseamnt!.round())
-          : '';
-      netamntrecController.text =
-          data.recamnt != null ? formatIndianNumber(data.recamnt!.round()) : '';
-
-      // Load existing files from SBFNAME
-      if (data.sbfname != null && data.sbfname!.isNotEmpty) {
-        _existingFiles = data.sbfname!.split(',').map((e) => e.trim()).toList();
-        print('✅ Loaded existing files: $_existingFiles');
-      } else {
-        _existingFiles = [];
-      }
-
-      // Clear new attachments
-      _attachedFiles.clear();
-
-      setState(() {});
-      _calculateTotals();
-
-      debugPrint('===== _loadBillingData END =====');
-    }
-  }
-
-  Future<void> _fetchAndSetCustomerNameForBilling(int customerId) async {
-    debugPrint('Fetching customer $customerId from API...');
-    try {
-      final response = await http.post(
-        ApiUtils.getUri('ExistingChecklistCustomers'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({"CUSTOMERID": customerId}),
-      );
-
-      if (response.statusCode == 200) {
-        final result = jsonDecode(response.body);
-        debugPrint('Customer fetch response: $result');
-
-        if (result['Success'] == true && result['CustomerDetails'] != null) {
-          final customers = result['CustomerDetails'] as List;
-          if (customers.isNotEmpty) {
-            final customer = ChecklistCustomer.fromJson(customers.first);
-            setState(() {
-              customerController.text =
-                  "${customer.customerId} - ${customer.companyName}";
-            });
-            debugPrint('Customer fetched and set: ${customerController.text}');
-
-            // Add to customerList for future use
-            if (!customerList.any((c) => c.customerId == customer.customerId)) {
-              setState(() {
-                customerList.add(customer);
-              });
-            }
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('Error fetching customer for billing: $e');
-    }
-  }
-
-  Future<void> _fetchAndSetProjectNameForBilling(
-      int customerId, int projectId) async {
-    try {
-      final response = await http.post(
-        ApiUtils.getUri('ProjectDetails'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({"CUSTOMERID": customerId}),
-      );
-
-      if (response.statusCode == 200) {
-        final result = jsonDecode(response.body);
-        if (result['Success'] == true && result['ProjectDetails'] != null) {
-          final projects = result['ProjectDetails'] as List;
-          final projectJson = projects.firstWhere(
-            (p) => p['PROJECTID'] == projectId,
-            orElse: () => null,
-          );
-          if (projectJson != null) {
-            final project = Project.fromJson(projectJson);
-            siteController.text =
-                "${project.projectId} - ${project.projectName}";
-            debugPrint('Project fetched and set: ${siteController.text}');
-
-            // Add to projectList for future use
-            if (!projectList.any((p) => p.projectId == project.projectId)) {
-              setState(() {
-                projectList.add(project);
-              });
-            }
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('Error fetching project for billing: $e');
-    }
-  }
-
-  Widget _buildExistingAttachmentItem(String fileName) {
-    final extension = fileName.split('.').last.toLowerCase();
-
-    return Card(
-      margin: EdgeInsets.symmetric(vertical: 4),
-      child: ListTile(
-        leading: _buildFileIconSync(extension),
-        title: Text(fileName, overflow: TextOverflow.ellipsis),
-        trailing: !widget.isReadOnly!
-            ? IconButton(
-                icon: const Icon(Icons.close, color: Colors.red),
-                onPressed: () {
-                  setState(() {
-                    _existingFiles.remove(fileName);
-                    _removedFiles.add(fileName);
-                    print('Marked for deletion: $fileName');
-                  });
-                },
-              )
-            : null,
-        onTap: () => _previewExistingFile(fileName),
-      ),
-    );
-  }
-
-  Future<void> _previewExistingFile(String fileName) async {
-    // Show snackbar asking user to download first
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Download the attachment first to view it.'),
-        backgroundColor: Colors.orange,
-        duration: Duration(seconds: 3),
-      ),
-    );
-  }
-
-  Widget _buildFileIconSync(String extension) {
-    if (['jpg', 'jpeg', 'png', 'gif', 'dwg'].contains(extension)) {
-      return _buildFileIcon(Icons.image, Colors.amber);
-    } else if (['pdf'].contains(extension)) {
-      return _buildFileIcon(Icons.picture_as_pdf, Colors.red);
-    } else if (['doc', 'docx'].contains(extension)) {
-      return _buildFileIcon(Icons.description, Colors.blue);
-    } else if (['xls', 'xlsx', 'xlsm', 'xlsb', 'csv'].contains(extension)) {
-      return _buildFileIcon(Icons.table_chart, Colors.green);
-    }
-    return _buildFileIcon(Icons.insert_drive_file, Colors.grey);
-  }
-
-  Future<Map<String, dynamic>> saveSalesBillingWithRemovedFiles(
-      Map<String, dynamic> requestBody) async {
-    try {
-      final response = await http.post(
-        ApiUtils.getUri('SaveSalesBillinglist'),
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode(requestBody),
-      );
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else {
-        return {
-          'Success': false,
-          'Message': 'Server Error: ${response.statusCode}'
-        };
-      }
-    } catch (e) {
-      return {
-        'Success': false,
-        'Message': e.toString(),
-      };
-    }
+    stateManager?.notifyListeners();
   }
 
   Future<void> fetchWorkOrderValue(int customerId, int projectId) async {
@@ -3837,55 +1568,652 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
     }
   }
 
-  void _showWODetailsDialog(BuildContext context) {
-    if (_woValueInclGst == null) return;
+  Future<void> _showAmountRemarksDialog({
+    required PlutoRow row,
+    required String amountField,
+    required String remarksField,
+    required String title,
+  }) async {
+    final amountController = TextEditingController(
+      text: row.cells[amountField]?.value.toString() ?? '',
+    );
+
+    final remarksController = TextEditingController(
+      text: row.cells[remarksField]?.value.toString() ?? '',
+    );
+
+    await showDialog(
+      context: context,
+      builder: (_) {
+        return AlertDialog(
+          title: Text(title),
+          content: SizedBox(
+            width: 350,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: amountController,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: 'Amount',
+                  ),
+                ),
+                const SizedBox(height: 15),
+                TextField(
+                  controller: remarksController,
+                  maxLines: 4,
+                  decoration: const InputDecoration(
+                    labelText: 'Remarks',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              child: const Text("Cancel"),
+              onPressed: () => Navigator.pop(context),
+            ),
+            ElevatedButton(
+              child: const Text("Save"),
+              onPressed: () {
+                row.cells[amountField]!.value =
+                    double.tryParse(amountController.text) ?? 0;
+
+                row.cells[remarksField]!.value = remarksController.text;
+
+                _calculateRowTotals(row);
+
+                stateManager?.notifyListeners();
+
+                Navigator.pop(context);
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _submitAllRows() async {
+    if (stateManager == null || stateManager!.rows.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No rows to submit'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // ── Separate new rows vs existing rows ────────────────────────────────
+    final List<PlutoRow> newRows = [];
+    final List<PlutoRow> existingRows = [];
+
+    for (final row in stateManager!.rows) {
+      if (_existingRowKeys.contains(row.key.toString())) {
+        existingRows.add(row); // fetched from API → UPDATE
+      } else {
+        newRows.add(row); // added by user → INSERT
+      }
+    }
+
+    // ── Validate only new rows need Bill No + Date ─────────────────────────
+    for (int i = 0; i < newRows.length; i++) {
+      final row = newRows[i];
+      final billNo = row.cells[_fBillNo]?.value?.toString().trim() ?? '';
+      final billDate = row.cells[_fDate]?.value?.toString().trim() ?? '';
+
+      if (billNo.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('New Row ${i + 1}: Bill No is required'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+      if (billDate.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('New Row ${i + 1}: Date is required'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+    }
+
+    // ── Show loading ───────────────────────────────────────────────────────
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      int successCount = 0;
+      int failCount = 0;
+      List<String> failMessages = [];
+
+      // ── INSERT new rows only ───────────────────────────────────────────
+      for (final row in newRows) {
+        final payload = _buildPayloadFromRow(row, isUpdate: false);
+        final result = await saveSalesBilling(payload);
+
+        if (result['Success'] == true) {
+          successCount++;
+          _existingRowKeys.add(row.key.toString()); // now it's existing
+        } else {
+          failCount++;
+          failMessages.add(result['Message']?.toString() ?? 'Unknown error');
+        }
+      }
+
+      // ── UPDATE existing rows ───────────────────────────────────────────
+      for (final row in existingRows) {
+        final payload = _buildPayloadFromRow(row, isUpdate: true);
+        final result = await saveSalesBilling(payload);
+
+        if (result['Success'] == true) {
+          successCount++;
+        } else {
+          failCount++;
+          failMessages.add(result['Message']?.toString() ?? 'Unknown error');
+        }
+      }
+
+      if (!mounted) return;
+      Navigator.pop(context);
+
+      if (failCount == 0) {
+        // ✅ Detect if it was update or insert
+        final isUpdateOnly = newRows.isEmpty && existingRows.isNotEmpty;
+        final message = isUpdateOnly
+            ? '$successCount ${successCount == 1 ? 'entry' : 'entries'} updated successfully'
+            : '$successCount ${successCount == 1 ? 'entry' : 'entries'} saved successfully';
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        if (widget.onDataSaved != null) widget.onDataSaved!();
+        Navigator.pop(context, true);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '$successCount saved, $failCount failed: ${failMessages.first}',
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<Map<String, dynamic>> saveSalesBilling(
+      Map<String, dynamic> requestBody) async {
+    try {
+      final response = await http.post(
+        ApiUtils.getUri('SaveSalesBillinglist'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(requestBody),
+      );
+
+      print('Status Code: ${response.statusCode}');
+      print('Response Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        return {
+          'Success': false,
+          'Message': 'Server Error: ${response.statusCode}'
+        };
+      }
+    } catch (e) {
+      print('Exception in saveSalesBilling: $e');
+      return {
+        'Success': false,
+        'Message': e.toString(),
+      };
+    }
+  }
+
+  Future<void> _fetchAndLoadBillingEntries() async {
+    if (selectedCustomerId == null || selectedProjectId == null) return;
+
+    setState(() => _isLoadingBilling = true);
+
+    try {
+      final uri = ApiUtils.getUri('ViewSalesBillinglist');
+
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'CUSID': selectedCustomerId,
+          'PROJID': selectedProjectId,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        if (data['Success'] == true) {
+          final List<dynamic> list = data['BillingList'] ?? [];
+          final entries =
+              list.map((e) => SalesBillingModel.fromJson(e)).toList();
+
+          final loadedRows = list.asMap().entries.map((mapEntry) {
+            final raw = mapEntry.value as Map<String, dynamic>;
+            final e = SalesBillingModel.fromJson(raw);
+            return PlutoRow(cells: {
+              // ── Text ──────────────────────────────────────────────────
+              _fBillNo: PlutoCell(value: e.billno ?? ''),
+              _fBillDesc: PlutoCell(value: e.billdesc ?? ''),
+
+              // ── Date ──────────────────────────────────────────────────
+              _fDate: PlutoCell(
+                value: e.billdate != null
+                    ? DateFormat('yyyy-MM-dd').format(e.billdate!)
+                    : '',
+              ),
+              _fRecDate: PlutoCell(
+                value: e.netrecddt != null
+                    ? DateFormat('yyyy-MM-dd').format(e.netrecddt!)
+                    : '',
+              ),
+
+              // ── % of work — model has no direct field, default 0 ──────
+              // your model doesn't have perofwork/workdoneamnt
+              // use itper as TDS% reference, keep perwork as 0
+              _fPerWork: PlutoCell(
+                  value: double.tryParse(
+                          (e.perofwork ?? '0').replaceAll('%', '').trim()) ??
+                      0.0),
+              _fWorkDone: PlutoCell(value: (e.workdoneamnt ?? 0).toDouble()),
+
+              // ── Advance amounts ────────────────────────────────────────
+              // model has no secadvamnt/mobadvamnt — default 0
+              _fSecAdv: PlutoCell(value: (e.secadvamnt ?? 0).toDouble()),
+              _fMobAdv: PlutoCell(value: (e.mobadvamnt ?? 0).toDouble()),
+
+              // ── Taxable / Bill amounts ─────────────────────────────────
+              _fTaxable: PlutoCell(value: (e.billamnt ?? 0).toDouble()),
+              _fGST: PlutoCell(value: (e.gstper ?? 18).toDouble()),
+              _fTotBill: PlutoCell(value: (e.billtotamnt ?? 0).toDouble()),
+
+              // ── TDS ────────────────────────────────────────────────────
+              _fTDS: PlutoCell(value: (e.tdsamnt ?? 0).toDouble()),
+              _fTDSCGST: PlutoCell(value: (e.tdscgstamnt ?? 0).toDouble()),
+              _fTDSSGST: PlutoCell(value: (e.tdssgstamnt ?? 0).toDouble()),
+
+              // ── Deductions ─────────────────────────────────────────────
+              _fSecDep: PlutoCell(value: (e.secdepamnt ?? 0).toDouble()),
+              _fLabCess: PlutoCell(value: (e.labcessamnt ?? 0).toDouble()),
+              _fMobInt: PlutoCell(value: (e.mobintamnt ?? 0).toDouble()),
+
+              _fOthDed: PlutoCell(value: (e.dedamnt ?? 0).toDouble()),
+              _fWithheld: PlutoCell(value: (e.whamnt ?? 0).toDouble()),
+              // model has no mobadvrec — default 0
+              _fMobAdvRec: PlutoCell(value: (e.mobadvrecamnt ?? 0).toDouble()),
+              _fWhRelease: PlutoCell(value: (e.whrlseamnt ?? 0).toDouble()),
+
+              // ── Totals ─────────────────────────────────────────────────
+              _fTotDed: PlutoCell(value: (e.totdedamnt ?? 0).toDouble()),
+              _fNetRec: PlutoCell(value: (e.netrecamnt ?? 0).toDouble()),
+
+              // ── Net Amount Received ────────────────────────────────────
+              _fNetAmtRecd: PlutoCell(value: (e.recamnt ?? 0).toDouble()),
+              _fOutstanding: PlutoCell(value: (e.outstandamnt ?? 0).toDouble()),
+
+              // ── Attachment fields ──────────────────────────────────────────
+              _fAttachment: PlutoCell(
+                value: e.sbfname ?? '', // Assuming model has this field
+              ),
+
+              // ── Hidden remark columns ──────────────────────────────────────
+              'col25FileName': PlutoCell(value: e.sbfname ?? ''),
+              'col25Base64': PlutoCell(value: ''),
+              'col25FileType': PlutoCell(value: e.sbftype ?? ''),
+              'colSBNO': PlutoCell(value: e.sbno ?? 0),
+              'col6Remark': PlutoCell(value: e.secadvremks ?? ''),
+              'col7Remark': PlutoCell(value: e.mobadvremks ?? ''),
+              'col17Remark': PlutoCell(value: e.othdedremks ?? ''),
+              'col18Remark': PlutoCell(value: e.whremks ?? ''),
+              'col19Remark': PlutoCell(value: e.mobadvrecremks ?? ''),
+              'col20Remark': PlutoCell(value: e.whrlseremks ?? ''),
+              'col23Remark': PlutoCell(value: e.netrecdremks ?? ''),
+              'colStage': PlutoCell(value: e.stagename ?? ''),
+            });
+          }).toList();
+
+          setState(() {
+            _billingList = entries;
+            rows = loadedRows;
+            _existingRowKeys.clear();
+            for (final row in loadedRows) {
+              _existingRowKeys.add(row.key.toString()); // mark as existing
+            }
+          });
+
+          if (stateManager != null) {
+            stateManager!.removeAllRows();
+            stateManager!.appendRows(loadedRows);
+          }
+
+          // ── Recalculate all loaded rows ────────────────────────────────
+          if (stateManager != null) {
+            for (final row in stateManager!.rows) {
+              _calculateRowTotals(row);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('_fetchAndLoadBillingEntries error: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error loading billing data: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() => _isLoadingBilling = false);
+    }
+  }
+
+  Map<String, dynamic> _buildPayloadFromRow(PlutoRow row,
+      {bool isUpdate = false}) {
+    // ── Helper to read cell value as double ──────────────────────────────
+    double _num(String field) {
+      final v = row.cells[field]?.value;
+      if (v == null) return 0;
+      return double.tryParse(v.toString()) ?? 0;
+    }
+
+    // ── Helper to read cell value as string ──────────────────────────────
+    String _str(String field) {
+      return row.cells[field]?.value?.toString().trim() ?? '';
+    }
+
+    // ── Helper to read remark field ───────────────────────────────────────
+    String _remark(String field) {
+      return row.cells[field]?.value?.toString().trim() ?? '';
+    }
+
+    // ── Read date ─────────────────────────────────────────────────────────
+    String? _date(String field) {
+      final v = _str(field);
+      if (v.isEmpty) return null;
+      try {
+        // PlutoGrid date format is yyyy-MM-dd
+        final parsed = DateTime.parse(v);
+        return parsed.toIso8601String();
+      } catch (_) {
+        return v;
+      }
+    }
+
+    // ── Build remarks strings from remark hidden columns ──────────────────
+    final secAdvAmt = _num(_fSecAdv);
+    final mobAdvAmt = _num(_fMobAdv);
+    final othDedAmt = _num(_fOthDed);
+    final whAmt = _num(_fWithheld);
+    final mobAdvRecAmt = _num(_fMobAdvRec);
+    final whRlAmt = _num(_fWhRelease);
+    final netAmtRecd = _num(_fNetAmtRecd);
+
+    final secAdvRemark = _remark('col6Remark');
+    final mobAdvRemark = _remark('col7Remark');
+    final othDedRemark = _remark('col17Remark');
+    final whRemark = _remark('col18Remark');
+    final mobAdvRecRemark = _remark('col19Remark');
+    final whRlRemark = _remark('col20Remark');
+    final netAmtRemark = _remark('col23Remark');
+
+    // ── Pack remarks same format as existing _submitForm ─────────────────
+    // Format: "amount$remark" — single entry per row
+    final secAdvRemks = secAdvAmt > 0 ? '$secAdvRemark' : '';
+    final mobAdvRemks = mobAdvAmt > 0 ? '$mobAdvRemark' : '';
+    final othDedRemks = othDedAmt > 0 ? '$othDedRemark' : '';
+    final whRemks = whAmt > 0 ? '$whRemark' : '';
+    final mobAdvRecRemks = mobAdvRecAmt > 0 ? '$mobAdvRecRemark' : '';
+    final whRlRemks = whRlAmt > 0 ? '$whRlRemark' : '';
+
+    // ── Net Amount Received: "amount-date-remark" ─────────────────────────
+
+    final netRecdRemarks = netAmtRecd > 0 ? '$netAmtRemark' : '';
+
+    // ── % of work: strip % if present ────────────────────────────────────
+    final perWork = _str(_fPerWork);
+    final perWorkFormatted = perWork.endsWith('%') ? perWork : '$perWork%';
+
+    // ── ATTACHMENT ────────────────────────────────────────────────────────
+    final base64Cell = row.cells['col25Base64']?.value?.toString().trim() ?? '';
+
+    List<Map<String, dynamic>> files = [];
+
+    if (base64Cell.isNotEmpty) {
+      try {
+        // ✅ Parse JSON list stored by _pickAndAttachFile
+        final decoded = jsonDecode(base64Cell) as List<dynamic>;
+        files = decoded
+            .map((e) => {
+                  'FILENAME': e['FILENAME']?.toString() ?? '',
+                  'FILEDATA': e['FILEDATA']?.toString() ?? '',
+                })
+            .toList();
+      } catch (_) {
+        // ✅ Fallback: single file old format
+        final fileName =
+            row.cells['col25FileName']?.value?.toString().trim() ?? '';
+        if (fileName.isNotEmpty && base64Cell.isNotEmpty) {
+          files = [
+            {'FILENAME': fileName, 'FILEDATA': base64Cell}
+          ];
+        }
+      }
+    }
+
+    // ✅ Get SBNO — 0 for new, real value for update
+    final sbno = isUpdate ? (_num('colSBNO').toInt()) : 0;
+
+    return {
+      // ── Core ──────────────────────────────────────────────────────────
+      'SBNO': sbno,
+      'CUSID': selectedCustomerId,
+      'PROJID': selectedProjectId,
+
+      'BILLNO': _str(_fBillNo),
+      'BILLDATE': _date(_fDate),
+      'BILLDESC': _str(_fBillDesc),
+      'PEROFWORK': perWorkFormatted,
+      'WORKDONEAMNT': _num(_fWorkDone),
+
+      // ── Secure Advance ────────────────────────────────────────────────
+      'SECADVAMNT': secAdvAmt.toInt(),
+      'SECADVREMKS': secAdvRemks,
+
+      // ── Mob Advance ───────────────────────────────────────────────────
+      'MOBADVAMNT': mobAdvAmt.toInt(),
+      'MOBADVREMKS': mobAdvRemks,
+
+      // ── Bill Amounts ──────────────────────────────────────────────────
+      'BILLAMNT': _num(_fTaxable).toInt(),
+      'GSTPER': _num(_fGST),
+      'GSTAMNT': ((_num(_fTaxable) * _num(_fGST)) / 100).round(),
+      'TOTBILLAMNT': _num(_fTotBill).toInt(),
+
+      // ── TDS ───────────────────────────────────────────────────────────
+      'TDSAMNT': _num(_fTDS).toInt(),
+      'TDSCGSTAMNT': _num(_fTDSCGST).toInt(),
+      'TDSSGSTAMNT': _num(_fTDSSGST).toInt(),
+
+      // ── Deductions ────────────────────────────────────────────────────
+      'SECDEPAMNT': _num(_fSecDep).toInt(),
+      'LABCESSAMNT': _num(_fLabCess).toInt(),
+      'MOBINTAMNT': _num(_fMobInt).toInt(),
+
+      'OTHDEDAMNT': othDedAmt.toInt(),
+      'OTHDEDREMKS': othDedRemks,
+
+      'WHAMNT': whAmt.toInt(),
+      'WHREMKS': whRemks,
+
+      'MOBADVRECAMNT': mobAdvRecAmt.toInt(),
+      'MOBADVRECREMKS': mobAdvRecRemks,
+
+      'WHRLSEAMNT': whRlAmt.toInt(),
+      'WHRLSEREMKS': whRlRemks,
+
+      'TOTDEDAMNT': _num(_fTotDed).toInt(),
+
+      // ── Net & Outstanding ─────────────────────────────────────────────
+      'NETRECAMNT': _num(_fNetRec).toInt(),
+      'NETRECDAMNT': netAmtRecd.toInt(),
+      'NETRECDDT': _date(_fRecDate),
+      'NETRECDREMKS': netRecdRemarks,
+      'OUTSTANDAMNT': () {
+        final outstandingField =
+            columns.firstWhere((c) => c.title == 'Outstanding').field;
+        return _num(outstandingField).toInt();
+      }(),
+      'STAGEIDNAME': _str('colStage'),
+
+      // ✅ This is what saves the file on server
+      'FILES': files, // ✅ now sends multiple files
+      'REMOVEDFILES': '',
+
+      // ── Audit ─────────────────────────────────────────────────────────
+      'ADDUSER': empCode,
+    };
+  }
+
+  Future<void> _pickAndAttachFile(PlutoRow row, String field) async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        allowMultiple: true, // ✅ multiple files
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'dwg'],
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      List<Map<String, String>> fileList = [];
+      List<String> fileNames = [];
+
+      for (final pickedFile in result.files) {
+        final file = File(pickedFile.path!);
+        final fileName = pickedFile.name;
+        final bytes = await file.readAsBytes();
+        final base64String = base64Encode(bytes);
+
+        print('=== File Picked ===');
+        print('File Name: $fileName');
+        print('File Size: ${bytes.length} bytes');
+        print('Base64 Length: ${base64String.length}');
+        print('===================');
+
+        fileList.add({
+          'FILENAME': fileName,
+          'FILEDATA': base64String,
+        });
+        fileNames.add(fileName);
+      }
+
+      // ✅ Store display name (comma separated) in visible cell
+      final displayNames = fileNames.join(', ');
+      stateManager?.changeCellValue(
+        row.cells[field]!,
+        displayNames,
+        notify: true,
+      );
+
+      // ✅ Store JSON list in hidden cell for payload
+      if (row.cells['${field}FileName'] != null) {
+        row.cells['${field}FileName']!.value = fileNames.join(',');
+      }
+      if (row.cells['${field}Base64'] != null) {
+        // ✅ Store as JSON string — parse back when building payload
+        row.cells['${field}Base64']!.value = jsonEncode(fileList);
+      }
+
+      print('✅ Total files attached: ${fileList.length}');
+      print('✅ File names: $displayNames');
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${fileList.length} file(s) attached successfully'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      print('Error in _pickAndAttachFile: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error attaching file: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _showAttachmentDialog(PlutoRow row, String field) {
+    final fileName = row.cells[field]?.value?.toString() ?? '';
+    final base64Data = row.cells['${field}Base64']?.value?.toString() ?? '';
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Work Order Value Details'),
+        title: Row(
+          children: [
+            const Icon(Icons.attach_file, color: Colors.blue),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                fileName,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const SizedBox(
-                  width: 90,
-                  child: Text(
-                    'Value',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-                  ),
-                ),
-                SizedBox(
-                  width: 100,
-                  child: Text(
-                    ' ₹ ${formatIndianNumber(_woValueExclGst ?? 0)}',
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ),
-                const Text(
-                  'Exclusive of GST 18%',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-              ],
+            const Icon(
+              Icons.insert_drive_file,
+              size: 64,
+              color: Colors.blue,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'File: $fileName',
+              style: const TextStyle(fontSize: 14),
             ),
             const SizedBox(height: 8),
-            Row(
-              children: [
-                const SizedBox(width: 90),
-                SizedBox(
-                  width: 100,
-                  child: Text(
-                    '₹ ${formatIndianNumber(_woValueInclGst ?? 0)}',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                const Text(
-                  'Inclusive of GST 18%',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-              ],
+            Text(
+              'Size: ${(base64Data.length * 0.75).toStringAsFixed(0)} bytes',
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
             ),
           ],
         ),
@@ -3894,791 +2222,1004 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
             onPressed: () => Navigator.pop(context),
             child: const Text('Close'),
           ),
+          ElevatedButton.icon(
+            onPressed: () async {
+              Navigator.pop(context);
+
+              final sbNo = int.tryParse(
+                    row.cells['SBNO']?.value?.toString() ?? '',
+                  ) ??
+                  0;
+
+              await BillingDownloadService.downloadBillingFiles(
+                context: context,
+                sbNo: sbNo,
+                sbfname: row.cells[field]?.value?.toString(),
+              );
+            },
+            icon: const Icon(Icons.download),
+            label: const Text('Download'),
+          ),
         ],
       ),
     );
   }
 
-  double _getTotalSecureAdvance() {
-    return _secureAdvanceEntries.fold(0.0, (sum, entry) => sum + entry.amount);
-  }
+  void _removeAttachment(PlutoRow row, String field) {
+    setState(() {
+      row.cells[field]!.value = '';
+      row.cells['${field}FileName']!.value = '';
+      row.cells['${field}Base64']!.value = '';
+    });
+    stateManager?.notifyListeners();
 
-  void _updateSecTotalController() {
-    _secTotalController.text =
-        '₹ ${formatIndianNumber(_getTotalSecureAdvance())}';
-    _calculateTotals();
-  }
-
-  double _getTotalMobAdvance() {
-    return _mobAdvanceEntries.fold(0.0, (sum, entry) => sum + entry.amount);
-  }
-
-  void _updateMobTotalController() {
-    _mobTotalController.text =
-        formatIndianNumber(_getTotalMobAdvance()); // ← no ₹ prefix
-    _calculateTotals();
-  }
-
-  double _getTotalOtherDeduction() {
-    return _otherdedEntries.fold(0.0, (sum, entry) => sum + entry.amount);
-  }
-
-  void _updateOtherdedTotalController() {
-    _otherdedTotalController.text =
-        formatIndianNumber(_getTotalOtherDeduction()); // ← no ₹ prefix
-    _calculateTotals();
-  }
-
-  double _getTotalwh() {
-    return _whEntries.fold(0.0, (sum, entry) => sum + entry.amount);
-  }
-
-  void _updatewhTotalController() {
-    _whTotalController.text =
-        formatIndianNumber(_getTotalwh()); // ← no ₹ prefix
-    _calculateTotals();
-  }
-
-  double _getTotalmobadvrec() {
-    return _mobadvrecEntries.fold(0.0, (sum, entry) => sum + entry.amount);
-  }
-
-  void _updatemobadvrecTotalController() {
-    _mobadvrecTotalController.text =
-        formatIndianNumber(_getTotalmobadvrec()); // ← no ₹ prefix
-    _calculateTotals();
-  }
-
-  double _getTotalwhrl() {
-    return _whrlEntries.fold(0.0, (sum, entry) => sum + entry.amount);
-  }
-
-  void _updatewhrlTotalController() {
-    _whrlTotalController.text =
-        formatIndianNumber(_getTotalwhrl()); // ← no ₹ prefix
-    _calculateTotals();
-  }
-
-  Widget _buildAdvanceTable({
-    required List<SecureAdvanceEntry> entries,
-    required TextEditingController amountCtrl,
-    required TextEditingController remarksCtrl,
-    required String label,
-    required VoidCallback onUpdate,
-  }) {
-    if (entries.isEmpty) return const SizedBox.shrink();
-
-    const double headerFs = 13;
-    const double cellFs = 13;
-    final totalAmount = entries.fold(0.0, (sum, e) => sum + e.amount);
-
-    // local helpers (no setState needed — they just build widgets)
-    Widget badge(int i) => Container(
-          width: 26,
-          height: 26,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: const Color(0xFFEFF3FA),
-            borderRadius: BorderRadius.circular(7),
-          ),
-          child: Text('${i + 1}',
-              style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.grey.shade600)),
-        );
-
-    Widget amountCell(double v, {bool total = false}) => Align(
-          alignment: Alignment.centerRight,
-          child: Text('₹ ${formatIndianNumber(v)}',
-              style: TextStyle(
-                fontSize: total ? cellFs + 1 : cellFs,
-                fontWeight: total ? FontWeight.w700 : FontWeight.w600,
-                color: total ? Colors.indigo.shade800 : const Color(0xFF1E293B),
-                fontFeatures: const [FontFeature.tabularFigures()],
-              )),
-        );
-
-    Widget remarksCell(String text, {bool total = false}) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          child: SizedBox(
-            width: 200,
-            child: Text(text,
-                style: TextStyle(
-                  fontSize: total ? cellFs + 1 : cellFs,
-                  fontWeight: total ? FontWeight.w700 : FontWeight.w400,
-                  color:
-                      total ? Colors.indigo.shade800 : const Color(0xFF64748B),
-                ),
-                softWrap: true,
-                overflow: TextOverflow.visible),
-          ),
-        );
-
-    return Card(
-      elevation: 0,
-      margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey.shade200),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
-            columnSpacing: 20,
-            horizontalMargin: 16,
-            headingRowHeight: 46,
-            dataRowMinHeight: 50,
-            dataRowMaxHeight: double.infinity,
-            headingRowColor: WidgetStateProperty.all(const Color(0xFFF8FAFC)),
-            columns: const [
-              DataColumn(
-                label: SizedBox(
-                  width: 36,
-                  child: Text('S.No',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: headerFs,
-                          color: Color(0xFF1E293B))),
-                ),
-              ),
-              DataColumn(
-                label: Text('Amount',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: headerFs,
-                        color: Color(0xFF1E293B))),
-                numeric: true,
-              ),
-              DataColumn(
-                label: Text('Remarks',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: headerFs,
-                        color: Color(0xFF1E293B))),
-              ),
-              DataColumn(
-                label: SizedBox(
-                  width: 80,
-                  child: Text('Actions',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: headerFs,
-                          color: Color(0xFF1E293B))),
-                ),
-              ),
-            ],
-            rows: [
-              // ── data rows ──────────────────────────────────────────────────
-              ...List.generate(entries.length, (i) {
-                final entry = entries[i];
-                return DataRow(
-                  color: WidgetStateProperty.all(
-                      i % 2 == 0 ? Colors.white : const Color(0xFFFAFBFD)),
-                  cells: [
-                    DataCell(badge(i)),
-                    DataCell(amountCell(entry.amount)),
-                    DataCell(remarksCell(entry.remarks)),
-                    DataCell(Row(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        _ActionIconButton(
-                          icon: Icons.edit_outlined,
-                          color: const Color(0xFF2563EB),
-                          tooltip: 'Edit',
-                          onPressed: () {
-                            amountCtrl.text = formatIndianNumber(entry.amount);
-                            remarksCtrl.text = entry.remarks;
-                            setState(() {
-                              entries.removeAt(i);
-                              onUpdate();
-                            });
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                    'Edit the entry and click Add to update'),
-                                backgroundColor: Colors.orange,
-                                duration: Duration(seconds: 2),
-                              ),
-                            );
-                          },
-                        ),
-                        const SizedBox(width: 6),
-                        _ActionIconButton(
-                          icon: Icons.delete_outline,
-                          color: const Color(0xFFDC2626),
-                          tooltip: 'Delete',
-                          onPressed: () {
-                            setState(() {
-                              entries.removeAt(i);
-                              onUpdate();
-                            });
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                              content: Text(
-                                  'Deleted: ₹ ${formatIndianNumber(entry.amount)}'),
-                              backgroundColor: Colors.red,
-                              duration: const Duration(seconds: 1),
-                            ));
-                          },
-                        ),
-                      ],
-                    )),
-                  ],
-                );
-              }),
-
-              // ── total row ──────────────────────────────────────────────────
-              DataRow(
-                color: WidgetStateProperty.all(
-                    Colors.indigo.shade50.withOpacity(0.6)),
-                cells: [
-                  DataCell(Container(
-                    width: 26,
-                    height: 26,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: Colors.indigo.shade100,
-                      borderRadius: BorderRadius.circular(7),
-                    ),
-                    child: Icon(Icons.summarize,
-                        size: 16, color: Colors.indigo.shade700),
-                  )),
-                  DataCell(amountCell(totalAmount, total: true)),
-                  DataCell(remarksCell('Total', total: true)),
-                  const DataCell(SizedBox(width: 80)),
-                ],
-              ),
-            ],
-          ),
-        ),
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Attachment removed'),
+        backgroundColor: Colors.orange,
       ),
     );
   }
 
-  void _addEntry({
-    required List<SecureAdvanceEntry> entries,
-    required TextEditingController amountCtrl,
-    required TextEditingController remarksCtrl,
-    required String label,
-    required VoidCallback onUpdate,
-  }) {
-    final amount = evaluateExpression(amountCtrl.text.trim());
-    final remarks = remarksCtrl.text.trim();
+  Future<void> _fetchBillingSummaryForProject(int projectId) async {
+    try {
+      final uri = ApiUtils.getUri('GetSalesBillingSummary');
 
-    if (amount == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text(
-            'Please enter a valid amount or expression (e.g. 100+50 or 1000-250)'),
-        backgroundColor: Colors.red,
-      ));
-      return;
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+      ).timeout(const Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body);
+
+        if (json['Success'] == true && json['Data'] != null) {
+          final List<dynamic> list = json['Data'];
+
+          final match = list.firstWhere(
+            (e) => e['PROJECTID'] == projectId,
+            orElse: () => null,
+          );
+
+          if (match != null) {
+            setState(() {
+              _billingSummary = SalesBillingSummaryModel.fromJson(match);
+            });
+            debugPrint(
+                '✅ Project Code fetched: ${_billingSummary?.projectCode}');
+          } else {
+            debugPrint(
+                '⚠️ No matching summary found for projectId: $projectId');
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('_fetchBillingSummaryForProject error: $e');
     }
-    if (remarks.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Please enter remarks'),
-        backgroundColor: Colors.red,
-      ));
-      return;
-    }
-
-    setState(() {
-      entries.add(SecureAdvanceEntry(amount: amount, remarks: remarks));
-      amountCtrl.clear();
-      remarksCtrl.clear();
-      onUpdate();
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('$label added: ₹ ${formatIndianNumber(amount)}'),
-      backgroundColor: Colors.green,
-    ));
   }
 
-  double? evaluateExpression(String input) {
+  Future<void> _downloadBillingData() async {
+    if (selectedCustomerId == null || selectedProjectId == null) return;
+
+    setState(() => _isLoadingBilling = true);
+
     try {
-      // ← Strip Indian number commas first, then clean spaces
-      final cleaned = input.replaceAll(',', '').replaceAll(' ', '').trim();
-      if (cleaned.isEmpty) return null;
+      final uri = ApiUtils.getUri('ViewSalesBillinglist');
 
-      // Plain number (including negatives like -250)
-      final plain = double.tryParse(cleaned);
-      if (plain != null) return plain;
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'CUSID': selectedCustomerId,
+          'PROJID': selectedProjectId,
+        }),
+      );
+      final totalWorkDone = _billingList.fold<double>(
+        0.0,
+        (sum, e) => sum + (e.workdoneamnt ?? 0),
+      );
 
-      // Expression evaluation
-      final parser = Parser();
-      final exp = parser.parse(cleaned);
-      final contextModel = ContextModel();
-      final result = exp.evaluate(EvaluationType.REAL, contextModel) as double;
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
 
-      return result.isFinite ? result : null;
+        if (data['Success'] == true) {
+          final List<dynamic> list = data['BillingList'] ?? [];
+          final entries =
+              list.map((e) => SalesBillingModel.fromJson(e)).toList();
+
+          if (entries.isEmpty) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('No billing data available to download.'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+            return;
+          }
+
+          // ── Fetch Stages from separate endpoint ────────────────────────
+          List<StageModel> stageList = [];
+          try {
+            final stagesUri = ApiUtils.getUri('ViewStagesList');
+            final stagesResponse = await http.post(
+              stagesUri,
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'CUSID': selectedCustomerId,
+                'PROJID': selectedProjectId,
+              }),
+            );
+            if (stagesResponse.statusCode == 200) {
+              final stagesData = jsonDecode(stagesResponse.body);
+              if (stagesData['Success'] == true) {
+                final List<dynamic> stageListRaw =
+                    stagesData['StageList'] ?? [];
+                stageList =
+                    stageListRaw.map((e) => StageModel.fromJson(e)).toList();
+              }
+            }
+          } catch (e) {
+            debugPrint('ViewStagesList error: $e');
+            // Non-fatal — PDF still generates without the stages section
+          }
+
+          if (entries.isEmpty) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('No billing data available to download.'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+            return;
+          }
+
+          // ── Build PDF ──────────────────────────────────────────────────
+          final pdf = pw.Document();
+
+          final headers = [
+            'Bill No',
+            'Date',
+            'Description',
+            '% Work',
+            'WD Value',
+            'Sec Adv',
+            'Mob Adv',
+            'Tax Value',
+            'GST %',
+            'Total Bill',
+            'TDS',
+            'TDS CGST',
+            'TDS SGST',
+            'Sec Dep',
+            'Lab Cess',
+            'Mob Int',
+            'Oth Ded',
+            'Withheld',
+            'Mob Adv Rec',
+            'WH Release',
+            'Tot Ded',
+            'Net Rec',
+            'Net Amt Recd',
+            'Recd Date',
+            'Outstanding',
+          ];
+
+          final tableRows = entries.map((e) {
+            return [
+              e.billno ?? '',
+              e.billdate != null
+                  ? DateFormat('dd-MM-yyyy').format(e.billdate!)
+                  : '',
+              e.billdesc ?? '',
+              e.perofwork ?? '0',
+              formatIndianNumber((e.workdoneamnt ?? 0).toDouble()),
+              formatIndianNumber((e.secadvamnt ?? 0).toDouble()),
+              formatIndianNumber((e.mobadvamnt ?? 0).toDouble()),
+              formatIndianNumber((e.billamnt ?? 0).toDouble()),
+              '${(e.gstper ?? 18).toStringAsFixed(0)}%',
+              formatIndianNumber((e.billtotamnt ?? 0).toDouble()),
+              formatIndianNumber((e.tdsamnt ?? 0).toDouble()),
+              formatIndianNumber((e.tdscgstamnt ?? 0).toDouble()),
+              formatIndianNumber((e.tdssgstamnt ?? 0).toDouble()),
+              formatIndianNumber((e.secdepamnt ?? 0).toDouble()),
+              formatIndianNumber((e.labcessamnt ?? 0).toDouble()),
+              formatIndianNumber((e.mobintamnt ?? 0).toDouble()),
+              formatIndianNumber((e.dedamnt ?? 0).toDouble()),
+              formatIndianNumber((e.whamnt ?? 0).toDouble()),
+              formatIndianNumber((e.mobadvrecamnt ?? 0).toDouble()),
+              formatIndianNumber((e.whrlseamnt ?? 0).toDouble()),
+              formatIndianNumber((e.totdedamnt ?? 0).toDouble()),
+              formatIndianNumber((e.netrecamnt ?? 0).toDouble()),
+              formatIndianNumber((e.recamnt ?? 0).toDouble()),
+              e.netrecddt != null
+                  ? DateFormat('dd-MM-yyyy').format(e.netrecddt!)
+                  : '',
+              formatIndianNumber((e.outstandamnt ?? 0).toDouble()),
+            ];
+          }).toList();
+
+          // ── Compute totals ──────────────────────────────────────────────────
+          double sumWorkDone = 0, sumSecAdv = 0, sumMobAdv = 0, sumTaxable = 0;
+          double sumTotBill = 0, sumTDS = 0, sumCGST = 0, sumSGST = 0;
+          double sumSecDep = 0, sumLabCess = 0, sumMobInt = 0, sumOthDed = 0;
+          double sumWithheld = 0,
+              sumMobAdvRec = 0,
+              sumWhRelease = 0,
+              sumTotDed = 0;
+          double sumNetRec = 0, sumNetAmtRecd = 0, sumOutstanding = 0;
+          double sumPerWork = 0;
+
+          for (final e in entries) {
+            sumPerWork += double.tryParse(
+                    (e.perofwork ?? '0').replaceAll('%', '').trim()) ??
+                0;
+            sumWorkDone += (e.workdoneamnt ?? 0).toDouble();
+            sumSecAdv += (e.secadvamnt ?? 0).toDouble();
+            sumMobAdv += (e.mobadvamnt ?? 0).toDouble();
+            sumTaxable += (e.billamnt ?? 0).toDouble();
+            sumTotBill += (e.billtotamnt ?? 0).toDouble();
+            sumTDS += (e.tdsamnt ?? 0).toDouble();
+            sumCGST += (e.tdscgstamnt ?? 0).toDouble();
+            sumSGST += (e.tdssgstamnt ?? 0).toDouble();
+            sumSecDep += (e.secdepamnt ?? 0).toDouble();
+            sumLabCess += (e.labcessamnt ?? 0).toDouble();
+            sumMobInt += (e.mobintamnt ?? 0).toDouble();
+            sumOthDed += (e.dedamnt ?? 0).toDouble();
+            sumWithheld += (e.whamnt ?? 0).toDouble();
+            sumMobAdvRec += (e.mobadvrecamnt ?? 0).toDouble();
+            sumWhRelease += (e.whrlseamnt ?? 0).toDouble();
+            sumTotDed += (e.totdedamnt ?? 0).toDouble();
+            sumNetRec += (e.netrecamnt ?? 0).toDouble();
+            sumNetAmtRecd += (e.recamnt ?? 0).toDouble();
+            sumOutstanding += (e.outstandamnt ?? 0).toDouble();
+          }
+
+          // ── Append total row ───────────────────────────────────────────────
+          tableRows.add([
+            'TOTAL',
+            '',
+            '',
+            '${sumPerWork.toStringAsFixed(0)}%',
+            formatIndianNumber(sumWorkDone),
+            formatIndianNumber(sumSecAdv),
+            formatIndianNumber(sumMobAdv),
+            formatIndianNumber(sumTaxable),
+            '',
+            formatIndianNumber(sumTotBill),
+            formatIndianNumber(sumTDS),
+            formatIndianNumber(sumCGST),
+            formatIndianNumber(sumSGST),
+            formatIndianNumber(sumSecDep),
+            formatIndianNumber(sumLabCess),
+            formatIndianNumber(sumMobInt),
+            formatIndianNumber(sumOthDed),
+            formatIndianNumber(sumWithheld),
+            formatIndianNumber(sumMobAdvRec),
+            formatIndianNumber(sumWhRelease),
+            formatIndianNumber(sumTotDed),
+            formatIndianNumber(sumNetRec),
+            formatIndianNumber(sumNetAmtRecd),
+            '',
+            formatIndianNumber(sumOutstanding),
+          ]);
+
+          pdf.addPage(
+            pw.MultiPage(
+              pageFormat: PdfPageFormat(
+                1600,
+                PdfPageFormat.a3.height,
+                marginLeft: 10,
+                marginRight: 10,
+                marginTop: 5, // Reduced top margin
+                marginBottom: 5,
+              ).landscape,
+              header: (context) => pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Center(
+                    child: pw.Text(
+                      'Billing Report',
+                      style: pw.TextStyle(
+                        fontSize: 18,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  pw.SizedBox(height: 4),
+                  pw.Container(
+                    width: double.infinity,
+                    decoration: pw.BoxDecoration(
+                      border:
+                          pw.Border.all(color: PdfColors.grey400, width: 0.8),
+                      borderRadius: pw.BorderRadius.circular(4),
+                    ),
+                    padding: const pw.EdgeInsets.all(10),
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text('Customer: ${customerController.text}'),
+                        pw.SizedBox(height: 8),
+                        pw.Row(
+                          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                          children: [
+                            pw.Text('Project: ${siteController.text}'),
+                            pw.Text(
+                              'Proj. Code: ${_billingSummary?.projectCode ?? '-'}',
+                              style: pw.TextStyle(
+                                  fontWeight: pw.FontWeight.bold, fontSize: 10),
+                            ),
+                          ],
+                        ),
+                        pw.SizedBox(height: 8),
+                        pw.Wrap(spacing: 10, runSpacing: 5, children: [
+                          pw.Text(
+                            'Work Order Value: Rs ${formatIndianNumber(_woValueExclGst ?? 0)} (Excl. GST 18%)',
+                            style: pw.TextStyle(
+                                fontSize: 10, color: PdfColors.grey700),
+                          ),
+                          pw.Text(
+                            'Rs ${formatIndianNumber(_woValueInclGst ?? 0)} (Incl. GST 18%)',
+                            style: pw.TextStyle(
+                                fontSize: 10, color: PdfColors.grey700),
+                          ),
+                        ]),
+                      ],
+                    ),
+                  ),
+                  pw.SizedBox(height: 8),
+                ],
+              ),
+              // ── NEW: page numbers at bottom ───────────────────────────────
+              footer: (context) => pw.Container(
+                alignment: pw.Alignment.centerRight,
+                margin: const pw.EdgeInsets.only(top: 10),
+                child: pw.Text(
+                  'Page ${context.pageNumber} of ${context.pagesCount}',
+                  style:
+                      const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
+                ),
+              ),
+              build: (context) => [
+                pw.Table(
+                  border:
+                      pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
+                  columnWidths: {
+                    0: const pw.FixedColumnWidth(45),
+                    1: const pw.FixedColumnWidth(45),
+                    2: const pw.FixedColumnWidth(55),
+                    3: const pw.FixedColumnWidth(35),
+                    4: const pw.FixedColumnWidth(60),
+                    5: const pw.FixedColumnWidth(55),
+                    6: const pw.FixedColumnWidth(55),
+                    7: const pw.FixedColumnWidth(60),
+                    8: const pw.FixedColumnWidth(30),
+                    9: const pw.FixedColumnWidth(60),
+                    10: const pw.FixedColumnWidth(50),
+                    11: const pw.FixedColumnWidth(50),
+                    12: const pw.FixedColumnWidth(50),
+                    13: const pw.FixedColumnWidth(50),
+                    14: const pw.FixedColumnWidth(50),
+                    15: const pw.FixedColumnWidth(50),
+                    16: const pw.FixedColumnWidth(50),
+                    17: const pw.FixedColumnWidth(50),
+                    18: const pw.FixedColumnWidth(55),
+                    19: const pw.FixedColumnWidth(50),
+                    20: const pw.FixedColumnWidth(55),
+                    21: const pw.FixedColumnWidth(60),
+                    22: const pw.FixedColumnWidth(60),
+                    23: const pw.FixedColumnWidth(45),
+                    24: const pw.FixedColumnWidth(60),
+                  },
+                  children: [
+                    // ── Header row — explicitly centered ──────────────────────────
+                    pw.TableRow(
+                      decoration:
+                          const pw.BoxDecoration(color: PdfColors.grey300),
+                      children: headers.map((h) {
+                        return pw.Padding(
+                          padding: const pw.EdgeInsets.all(4),
+                          child: pw.Text(
+                            h,
+                            style: pw.TextStyle(
+                                fontWeight: pw.FontWeight.bold, fontSize: 8),
+                            textAlign: pw.TextAlign.center,
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    // ── Data rows ────────────────────────────────────────────────
+                    ...tableRows.asMap().entries.map((entry) {
+                      final rowIndex = entry.key;
+                      final row = entry.value;
+                      final isTotalRow = rowIndex == tableRows.length - 1;
+
+                      // Alignment per column index, matching your earlier cellAlignments map
+                      final alignments = <int, pw.TextAlign>{
+                        0: pw.TextAlign.left,
+                        1: pw.TextAlign.left,
+                        2: pw.TextAlign.left,
+                        3: pw.TextAlign.right,
+                        4: pw.TextAlign.right,
+                        5: pw.TextAlign.right,
+                        6: pw.TextAlign.right,
+                        7: pw.TextAlign.right,
+                        8: pw.TextAlign.right,
+                        9: pw.TextAlign.right,
+                        10: pw.TextAlign.right,
+                        11: pw.TextAlign.right,
+                        12: pw.TextAlign.right,
+                        13: pw.TextAlign.right,
+                        14: pw.TextAlign.right,
+                        15: pw.TextAlign.right,
+                        16: pw.TextAlign.right,
+                        17: pw.TextAlign.right,
+                        18: pw.TextAlign.right,
+                        19: pw.TextAlign.right,
+                        20: pw.TextAlign.right,
+                        21: pw.TextAlign.right,
+                        22: pw.TextAlign.right,
+                        23: pw.TextAlign.left,
+                        24: pw.TextAlign.right,
+                      };
+
+                      return pw.TableRow(
+                        decoration: pw.BoxDecoration(
+                          color:
+                              isTotalRow ? PdfColors.grey300 : PdfColors.white,
+                        ),
+                        children: row.asMap().entries.map((cellEntry) {
+                          final colIndex = cellEntry.key;
+                          final value = cellEntry.value;
+                          return pw.Padding(
+                            padding: const pw.EdgeInsets.all(4),
+                            child: pw.Text(
+                              value,
+                              style: pw.TextStyle(
+                                fontSize: 7,
+                                fontWeight: isTotalRow
+                                    ? pw.FontWeight.bold
+                                    : pw.FontWeight.normal,
+                              ),
+                              textAlign:
+                                  alignments[colIndex] ?? pw.TextAlign.left,
+                            ),
+                          );
+                        }).toList(),
+                      );
+                    }).toList(),
+                  ],
+                ),
+                // ── Stages section — outside/below the table ─────────────────────
+                if (stageList.isNotEmpty) ...[
+                  pw.SizedBox(height: 12),
+                  pw.Text(
+                    'Stages',
+                    style: pw.TextStyle(
+                        fontSize: 11, fontWeight: pw.FontWeight.bold),
+                  ),
+                  pw.SizedBox(height: 5),
+                  ...stageList.asMap().entries.map((entry) {
+                    final idx = entry.key;
+                    final item = entry.value;
+                    return pw.Padding(
+                      padding: const pw.EdgeInsets.only(bottom: 3),
+                      child: pw.Text(
+                        '${idx + 1}. ${item.stageName ?? ''} (${item.stagePer ?? '0'})',
+                        style: const pw.TextStyle(fontSize: 10),
+                      ),
+                    );
+                  }).toList(),
+                ],
+              ],
+            ),
+          );
+
+          // ── Save PDF to Downloads folder ─────────────────────────────────
+          final directory = await getDownloadsDirectory();
+          if (directory == null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Could not access Downloads folder.'),
+                backgroundColor: Colors.red,
+              ),
+            );
+            return;
+          }
+          final fileName =
+              'BillingData_${selectedCustomerId}_${selectedProjectId}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+          final filePath = '${directory.path}/$fileName';
+          final file = File(filePath);
+          await file.writeAsBytes(await pdf.save());
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('PDF saved: $fileName'),
+              backgroundColor: Colors.green,
+              action: SnackBarAction(
+                label: 'Open',
+                onPressed: () => OpenFile.open(filePath),
+              ),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to fetch billing data.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
     } catch (e) {
+      debugPrint('_downloadBillingData error: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error generating PDF: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() => _isLoadingBilling = false);
+    }
+  }
+
+  Future<void> _loadBillingDataForProject(int customerId, int projectId) async {
+    debugPrint(
+        '🔵 _loadBillingDataForProject called: cust=$customerId proj=$projectId');
+    setState(() => _isLoadingBilling = true);
+
+    try {
+      final response = await http.post(
+        ApiUtils.getUri('GetSalesBillingByProject'),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "PROJID": projectId,
+          "CUSTOMERID": customerId,
+        }),
+      );
+      debugPrint('🔵 Response status: ${response.statusCode}');
+      debugPrint('🔵 Response body: ${response.body}');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        if (data['Success'] == true) {
+          final List<dynamic> list = data['Data'] ?? [];
+          debugPrint('🔵 Rows fetched: ${list.length}');
+          final entries =
+              list.map((e) => SalesBillingModel.fromJson(e)).toList();
+
+          final loadedRows = list.asMap().entries.map((mapEntry) {
+            final raw = mapEntry.value as Map<String, dynamic>;
+            final e = SalesBillingModel.fromJson(raw);
+            return PlutoRow(cells: {
+              _fBillNo: PlutoCell(value: e.billno ?? ''),
+              _fBillDesc: PlutoCell(value: e.billdesc ?? ''),
+              _fDate: PlutoCell(
+                value: e.billdate != null
+                    ? DateFormat('yyyy-MM-dd').format(e.billdate!)
+                    : '',
+              ),
+              _fRecDate: PlutoCell(
+                value: e.netrecddt != null
+                    ? DateFormat('yyyy-MM-dd').format(e.netrecddt!)
+                    : '',
+              ),
+              _fPerWork: PlutoCell(
+                  value: double.tryParse(
+                          (e.perofwork ?? '0').replaceAll('%', '').trim()) ??
+                      0.0),
+              _fWorkDone: PlutoCell(value: (e.workdoneamnt ?? 0).toDouble()),
+              _fSecAdv: PlutoCell(value: (e.secadvamnt ?? 0).toDouble()),
+              _fMobAdv: PlutoCell(value: (e.mobadvamnt ?? 0).toDouble()),
+              _fTaxable: PlutoCell(value: (e.billamnt ?? 0).toDouble()),
+              _fGST: PlutoCell(value: (e.gstper ?? 18).toDouble()),
+              _fTotBill: PlutoCell(value: (e.billtotamnt ?? 0).toDouble()),
+              _fTDS: PlutoCell(value: (e.tdsamnt ?? 0).toDouble()),
+              _fTDSCGST: PlutoCell(value: (e.tdscgstamnt ?? 0).toDouble()),
+              _fTDSSGST: PlutoCell(value: (e.tdssgstamnt ?? 0).toDouble()),
+              _fSecDep: PlutoCell(value: (e.secdepamnt ?? 0).toDouble()),
+              _fLabCess: PlutoCell(value: (e.labcessamnt ?? 0).toDouble()),
+              _fMobInt: PlutoCell(value: (e.mobintamnt ?? 0).toDouble()),
+              _fOthDed: PlutoCell(value: (e.dedamnt ?? 0).toDouble()),
+              _fWithheld: PlutoCell(value: (e.whamnt ?? 0).toDouble()),
+              _fMobAdvRec: PlutoCell(value: (e.mobadvrecamnt ?? 0).toDouble()),
+              _fWhRelease: PlutoCell(value: (e.whrlseamnt ?? 0).toDouble()),
+              _fTotDed: PlutoCell(value: (e.totdedamnt ?? 0).toDouble()),
+              _fNetRec: PlutoCell(value: (e.netrecamnt ?? 0).toDouble()),
+              _fNetAmtRecd: PlutoCell(value: (e.recamnt ?? 0).toDouble()),
+              _fOutstanding: PlutoCell(value: (e.outstandamnt ?? 0).toDouble()),
+              _fAttachment: PlutoCell(value: e.sbfname ?? ''),
+              'col25FileName': PlutoCell(value: e.sbfname ?? ''),
+              'col25Base64': PlutoCell(value: ''),
+              'col25FileType': PlutoCell(value: e.sbftype ?? ''),
+              'colSBNO': PlutoCell(value: e.sbno ?? 0),
+              'col6Remark': PlutoCell(value: e.secadvremks ?? ''),
+              'col7Remark': PlutoCell(value: e.mobadvremks ?? ''),
+              'col17Remark': PlutoCell(value: e.othdedremks ?? ''),
+              'col18Remark': PlutoCell(value: e.whremks ?? ''),
+              'col19Remark': PlutoCell(value: e.mobadvrecremks ?? ''),
+              'col20Remark': PlutoCell(value: e.whrlseremks ?? ''),
+              'col23Remark': PlutoCell(value: e.netrecdremks ?? ''),
+            });
+          }).toList();
+
+          setState(() {
+            _billingList = entries;
+            rows = loadedRows;
+            _existingRowKeys.clear();
+            for (final row in loadedRows) {
+              _existingRowKeys.add(row.key.toString());
+            }
+          });
+
+          if (stateManager != null) {
+            stateManager!.removeAllRows();
+            stateManager!.appendRows(loadedRows);
+            for (final row in stateManager!.rows) {
+              _calculateRowTotals(row);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('_loadBillingDataForProject error: $e');
+    } finally {
+      setState(() => _isLoadingBilling = false);
+    }
+  }
+
+  Future<void> _showStagesDialog() async {
+    if (selectedCustomerId == null || selectedProjectId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select a customer and project first.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isLoadingStages = true);
+
+    List<StageModel> stageList = [];
+    String? errorMsg;
+
+    try {
+      final stagesUri = ApiUtils.getUri('ViewStagesList');
+      final stagesResponse = await http.post(
+        stagesUri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'CUSID': selectedCustomerId,
+          'PROJID': selectedProjectId,
+        }),
+      );
+
+      if (stagesResponse.statusCode == 200) {
+        final stagesData = jsonDecode(stagesResponse.body);
+        if (stagesData['Success'] == true) {
+          final List<dynamic> stageListRaw = stagesData['StageList'] ?? [];
+          stageList = stageListRaw.map((e) => StageModel.fromJson(e)).toList();
+        } else {
+          errorMsg = stagesData['Message'] ?? 'Failed to fetch stages.';
+        }
+      } else {
+        errorMsg = 'Server error (${stagesResponse.statusCode})';
+      }
+    } catch (e) {
+      errorMsg = 'Error fetching stages: $e';
+    } finally {
+      setState(() => _isLoadingStages = false);
+    }
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Stages'),
+        content: SizedBox(
+          //width: double.maxFinite,
+          width: 500,
+          child: errorMsg != null
+              ? Text(errorMsg, style: const TextStyle(color: Colors.red))
+              : stageList.isEmpty
+                  ? const Text('No stages found for this project.')
+                  : ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: stageList.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final item = stageList[index];
+                        return ListTile(
+                          dense: true,
+                          leading: CircleAvatar(
+                            radius: 12,
+                            child: Text(
+                              '${index + 1}',
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                          ),
+                          title: Text(item.stageName ?? '-'),
+                          trailing: Text('${item.stagePer ?? '0'}%'),
+                        );
+                      },
+                    ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class BillingDownloadService {
+  // Method to get file names from your API
+  static Future<Map<String, dynamic>?> _getBillingFiles({
+    required int sbNo,
+  }) async {
+    try {
+      final response = await http.post(
+        ApiUtils.getUri('GetBillingFiles'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({"SBNO": sbNo}),
+      );
+
+      print('GetBillingFiles Response: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['Success'] == true) {
+          return data['Data'];
+        }
+      }
+      return null;
+    } catch (e) {
+      print('Error fetching files: $e');
       return null;
     }
   }
 
-  void _calculateTotals() {
-    // ── Raw inputs ──
-    final workDone = _parseIndianNumber(WorkDoneController.text);
-    final secAdvTotal = _getTotalSecureAdvance();
-    final mobAdvTotal = _getTotalMobAdvance();
-    final gstPercent = double.tryParse(gstController.text.trim()) ?? 0;
-    final itPercent =
-        double.tryParse(itController.text.replaceAll('%', '').trim()) ?? 0;
-    final retentionPercent =
-        double.tryParse(retentionController.text.replaceAll('%', '').trim()) ??
-            0;
-
-    // ── Step 1: Taxable Value (Amount) ──
-    final taxableValue = workDone + secAdvTotal + mobAdvTotal;
-    amountController.text = formatIndianNumber(taxableValue);
-
-    // ── Step 2: TDS CGST & SGST (1% of Work Done) ──
-    final tdsCGST = workDone * 0.01;
-    final tdsSGST = workDone * 0.01;
-    TDSCGSTController.text = formatIndianNumber(tdsCGST);
-    TDSSGSTController.text = formatIndianNumber(tdsSGST);
-
-    // ── Step 3: GST Amount & Total Bill Amount ──
-    double totalBillAmount = 0;
-    if (taxableValue > 0 && gstPercent > 0) {
-      final gstAmount = (taxableValue * gstPercent) / 100;
-      final roundedGstAmount = gstAmount.round();
-      totalBillAmount =
-          taxableValue.round().toDouble() + roundedGstAmount.toDouble();
-
-      gstAmountController.text = formatIndianNumber(roundedGstAmount);
-      totbillamountController.text = formatIndianNumber(totalBillAmount);
-    } else {
-      gstAmountController.clear();
-      totbillamountController.clear();
-      totalBillAmount = 0;
-    }
-
-    // ── Step 4: Labour Cess (1% of Total Bill Amount) ──
-    final labourCess = (totalBillAmount * 0.01).round();
-    labcessController.text = formatIndianNumber(labourCess);
-
-    // ── Step 5: TDSAmountValue (2% of Taxable Value) ──
-    double TDSAmountValue = 0;
-    if (taxableValue > 0 && itPercent > 0) {
-      TDSAmountValue = ((taxableValue * itPercent) / 100).roundToDouble();
-      itAmountController.text = formatIndianNumber(TDSAmountValue);
-    } else {
-      itAmountController.clear();
-    }
-
-    // ── Step 6: SecurityDepositAmountValue (5% of Taxable Value) ──
-    double SecurityDepositAmountValue = 0;
-    if (taxableValue > 0 && retentionPercent > 0) {
-      SecurityDepositAmountValue =
-          ((taxableValue * retentionPercent) / 100).roundToDouble();
-      secdepositController.text =
-          formatIndianNumber(SecurityDepositAmountValue);
-    } else {
-      secdepositController.clear();
-    }
-
-    // ── Step 7: Total Deduction ──
-    final otherDedTotal =
-        _otherdedEntries.fold(0.0, (sum, e) => sum + e.amount);
-    final withheldTotal = _whEntries.fold(0.0, (sum, e) => sum + e.amount);
-    final mobAdvRecTotal =
-        _mobadvrecEntries.fold(0.0, (sum, e) => sum + e.amount);
-    final withheldRelease = _whrlEntries.fold(0.0, (sum, e) => sum + e.amount);
-    final mobInt = _parseIndianNumber(mobintController.text);
-
-    final totalDeduction = TDSAmountValue +
-        tdsCGST +
-        tdsSGST +
-        SecurityDepositAmountValue +
-        labourCess +
-        mobInt +
-        otherDedTotal +
-        withheldTotal +
-        mobAdvRecTotal -
-        withheldRelease; // ← release reduces the deduction
-
-    if (totalDeduction != 0) {
-      totdedController.text = formatIndianNumber(totalDeduction);
-    } else {
-      totdedController.clear();
-    }
-
-    // ── Step 8: Net Receivable = Total Bill Amount - Total Deduction ──
-    double netReceivable = 0;
-    if (totalBillAmount > 0) {
-      netReceivable = totalBillAmount - totalDeduction;
-      netrecController.text = formatIndianNumber(netReceivable);
-    } else {
-      netrecController.clear();
-    }
-
-    // ── Step 9: Outstanding = Net Receivable - Net Amount Received ──
-    if (totalBillAmount > 0) {
-      final totalNetAmountReceived =
-          _netamntrecdEntries.fold(0.0, (sum, e) => sum + e.amount);
-      final outstanding = netReceivable - totalNetAmountReceived;
-      osController.text = formatIndianNumber(outstanding);
-    } else {
-      osController.clear();
-    }
-
-    debugPrint('''
-=== Calculate Totals ===
-Work Done              : $workDone
-Secure Advance         : $secAdvTotal
-Mobilization Advance   : $mobAdvTotal
-Taxable Value          : $taxableValue
-
-GST %                  : $gstPercent
-GST Amount             : ${gstAmountController.text}
-Total Bill Amount      : ${totbillamountController.text}
-TDS Amount             : $TDSAmountValue
-TDS CGST (1%)          : $tdsCGST
-TDS SGST (1%)          : $tdsSGST
-Security Deposit Amount: $SecurityDepositAmountValue
-Labour Cess (1%)       : $labourCess
-Mobilization Interest  : $mobInt
-Other Deduction        : $otherDedTotal
-With Held              : $withheldTotal
-Mob Advance Recovery   : $mobAdvRecTotal
-With Held Release      : $withheldRelease
-Total Deduction        : $totalDeduction
-Net Receivable         : $netReceivable
-Total Net Amt Received : ${_netamntrecdEntries.fold(0.0, (s, e) => s + e.amount)}
-Outstanding            : ${osController.text}
-========================
-''');
-  }
-
-  double _parseIndianNumber(String value) {
-    // Remove ₹, spaces, commas
-    final cleaned = value.replaceAll('₹', '').replaceAll(',', '').trim();
-    return double.tryParse(cleaned) ?? 0.0;
-  }
-
-  void _addnetamountEntry() {
-    final amount = evaluateExpression(netamntrecController.text.trim());
-    final remarks = netamntrecdrmksController.text.trim();
-    final date =
-        recDate != null ? DateFormat('yyyy-MM-dd').format(recDate!) : '';
-    final outstanding = _parseIndianNumber(osController.text);
-
-    if (amount == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text(
-            'Please enter a valid amount or expression (e.g. 100+50 or 1000-250)'),
-        backgroundColor: Colors.red,
-      ));
-      return;
-    }
-
-    if (remarks.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Please enter remarks'),
-        backgroundColor: Colors.red,
-      ));
-      return;
-    }
-
-    setState(() {
-      _netamntrecdEntries.add(NetAmountRecd(
-        amount: amount,
-        remarks: remarks,
-        date: date,
-      ));
-      netamntrecController.clear();
-      netamntrecdrmksController.clear();
-      setState(() => recDate = null); // reset date picker
-      _updatenetamntrecdTotalController();
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content:
-          Text('Net Amount Received added: ₹ ${formatIndianNumber(amount)}'),
-      backgroundColor: Colors.green,
-    ));
-  }
-
-  Widget _buildNetamountrecdTable() {
-    if (_netamntrecdEntries.isEmpty) return const SizedBox.shrink();
-
-    const double headerFs = 13;
-    const double cellFs = 13;
-
-    final totalAmount =
-        _netamntrecdEntries.fold(0.0, (sum, e) => sum + e.amount);
-
-    Widget badge(int i) => Container(
-          width: 26,
-          height: 26,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: const Color(0xFFEFF3FA),
-            borderRadius: BorderRadius.circular(7),
-          ),
-          child: Text('${i + 1}',
-              style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.grey.shade600)),
-        );
-
-    return Card(
-      elevation: 0,
-      margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey.shade200),
+  // Main method to download files
+  static Future<void> downloadBillingFiles({
+    required BuildContext context,
+    required int sbNo,
+    String? sbfname,
+  }) async {
+    // Show loading
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Getting file information...'),
+        backgroundColor: Colors.blue,
+        duration: Duration(seconds: 1),
       ),
-      clipBehavior: Clip.antiAlias,
-      child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
-            columnSpacing: 20,
-            horizontalMargin: 16,
-            headingRowHeight: 46,
-            dataRowMinHeight: 50,
-            dataRowMaxHeight: double.infinity,
-            headingRowColor: WidgetStateProperty.all(const Color(0xFFF8FAFC)),
-            columns: const [
-              DataColumn(
-                label: SizedBox(
-                  width: 36,
-                  child: Text('S.No',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: headerFs,
-                          color: Color(0xFF1E293B))),
-                ),
-              ),
-              DataColumn(
-                label: Text('Amount',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: headerFs,
-                        color: Color(0xFF1E293B))),
-                numeric: true,
-              ),
-              DataColumn(
-                label: Text('Remarks',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: headerFs,
-                        color: Color(0xFF1E293B))),
-              ),
-              DataColumn(
-                label: Text('Date',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: headerFs,
-                        color: Color(0xFF1E293B))),
-              ),
-              DataColumn(
-                label: SizedBox(
-                  width: 80,
-                  child: Text('Actions',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: headerFs,
-                          color: Color(0xFF1E293B))),
-                ),
-              ),
-            ],
-            rows: [
-              // ── data rows ──────────────────────────────────────────────────
-              ...List.generate(_netamntrecdEntries.length, (i) {
-                final entry = _netamntrecdEntries[i];
-                return DataRow(
-                  color: WidgetStateProperty.all(
-                      i % 2 == 0 ? Colors.white : const Color(0xFFFAFBFD)),
-                  cells: [
-                    // S.No
-                    DataCell(badge(i)),
+    );
 
-                    // Amount
-                    DataCell(Align(
-                      alignment: Alignment.centerRight,
-                      child: Text('₹ ${formatIndianNumber(entry.amount)}',
-                          style: const TextStyle(
-                            fontSize: cellFs,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF1E293B),
-                            fontFeatures: [FontFeature.tabularFigures()],
-                          )),
-                    )),
+    // Get file names if not provided
+    String? fileNamesString = sbfname;
 
-                    // Remarks
-                    DataCell(Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      child: SizedBox(
-                        width: 100,
-                        child: Text(entry.remarks,
-                            style: const TextStyle(
-                              fontSize: cellFs,
-                              fontWeight: FontWeight.w400,
-                              color: Color(0xFF64748B),
-                            ),
-                            softWrap: true,
-                            overflow: TextOverflow.visible),
-                      ),
-                    )),
+    if (fileNamesString == null || fileNamesString.trim().isEmpty) {
+      final filesData = await _getBillingFiles(sbNo: sbNo);
 
-                    // Date
-                    DataCell(Text(
-                      entry.date.isEmpty ? '—' : entry.date,
-                      style: const TextStyle(
-                        fontSize: cellFs,
-                        color: Color(0xFF64748B),
-                      ),
-                    )),
+      if (filesData == null) {
+        _showNoFilesDialog(context, sbNo);
+        return;
+      }
 
-                    // Actions
-                    DataCell(Row(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        _ActionIconButton(
-                          icon: Icons.edit_outlined,
-                          color: const Color(0xFF2563EB),
-                          tooltip: 'Edit',
-                          onPressed: () {
-                            netamntrecController.text =
-                                formatIndianNumber(entry.amount);
-                            netamntrecdrmksController.text = entry.remarks;
-                            setState(() {
-                              _netamntrecdEntries.removeAt(i);
-                              _updatenetamntrecdTotalController();
-                            });
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                    'Edit the entry and click Add to update'),
-                                backgroundColor: Colors.orange,
-                                duration: Duration(seconds: 2),
-                              ),
-                            );
-                          },
-                        ),
-                        const SizedBox(width: 6),
-                        _ActionIconButton(
-                          icon: Icons.delete_outline,
-                          color: const Color(0xFFDC2626),
-                          tooltip: 'Delete',
-                          onPressed: () {
-                            setState(() {
-                              _netamntrecdEntries.removeAt(i);
-                              _updatenetamntrecdTotalController();
-                            });
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                              content: Text(
-                                  'Deleted: ₹ ${formatIndianNumber(entry.amount)}'),
-                              backgroundColor: Colors.red,
-                              duration: const Duration(seconds: 1),
-                            ));
-                          },
-                        ),
-                      ],
-                    )),
-                  ],
-                );
-              }),
+      fileNamesString = filesData['SBFNAME'];
 
-              // ── total row ──────────────────────────────────────────────────
-              DataRow(
-                color: WidgetStateProperty.all(
-                    Colors.indigo.shade50.withOpacity(0.6)),
-                cells: [
-                  // S.No — summary icon
-                  DataCell(Container(
-                    width: 26,
-                    height: 26,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: Colors.indigo.shade100,
-                      borderRadius: BorderRadius.circular(7),
-                    ),
-                    child: Icon(Icons.summarize,
-                        size: 16, color: Colors.indigo.shade700),
-                  )),
-                  // Total Amount
-                  DataCell(Align(
-                    alignment: Alignment.centerRight,
-                    child: Text('₹ ${formatIndianNumber(totalAmount)}',
-                        style: TextStyle(
-                          fontSize: cellFs + 1,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.indigo.shade800,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        )),
-                  )),
-                  // "Total" label
-                  DataCell(SizedBox(
-                    width: 180,
-                    child: Text('Total',
-                        style: TextStyle(
-                          fontSize: cellFs + 1,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.indigo.shade800,
-                        )),
-                  )),
-                  const DataCell(SizedBox()), // Date — blank
+      if (fileNamesString == null ||
+          fileNamesString.toString().trim().isEmpty) {
+        _showNoFilesDialog(context, sbNo);
+        return;
+      }
+    }
 
-                  const DataCell(SizedBox(width: 80)), // Actions — blank
-                ],
-              ),
-            ],
+    final List<String> fileNames =
+        fileNamesString.split(',').map((e) => e.trim()).toList();
+
+    // Request storage permission for Android
+    if (Platform.isAndroid) {
+      final status = await Permission.storage.request();
+      if (!status.isGranted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Storage permission denied'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+    }
+
+    // Show download progress
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Downloading ${fileNames.length} file(s)...'),
+        backgroundColor: Colors.blue,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+
+    final List<String> success = [];
+    final List<String> failed = [];
+
+    // Download each file
+    for (final fileName in fileNames) {
+      try {
+        await _downloadFile(fileName, sbNo);
+        success.add(fileName);
+        print('✓ Downloaded: $fileName');
+      } catch (e) {
+        failed.add(fileName);
+        print('✗ Failed: $fileName - $e');
+      }
+    }
+
+    // Show result
+    _showDownloadResult(context, success, failed);
+  }
+
+  // Download single file using your API
+  static Future<void> _downloadFile(String fileName, int sbNo) async {
+    try {
+      print('Original filename from DB: "$fileName"');
+
+      final response = await http.post(
+        ApiUtils.getUri('DownloadbillFile'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({"fileName": fileName}),
+      );
+
+      print('Download API Request: fileName = "$fileName"');
+      print('Download API Response Status: ${response.statusCode}');
+      print('Download API Response Body: ${response.body}');
+
+      final data = jsonDecode(response.body);
+
+      if (data['Success'] == true) {
+        // Get the file bytes from Base64
+        String base64String = data['FileBytes'];
+        Uint8List fileBytes = base64Decode(base64String);
+
+        // Save the file
+        String savePath = await _getSavePath(fileName);
+        File file = File(savePath);
+        await file.writeAsBytes(fileBytes);
+
+        print('File saved to: $savePath');
+      } else {
+        throw Exception(data['Message'] ?? 'Download failed');
+      }
+    } catch (e) {
+      throw Exception('Failed to download $fileName: $e');
+    }
+  }
+
+  // Get save path for different platforms
+  static Future<String> _getSavePath(String fileName) async {
+    if (Platform.isAndroid) {
+      // Android: Save to Downloads folder
+      final directory = Directory('/storage/emulated/0/Download');
+      if (!await directory.exists()) {
+        await directory.create(recursive: true);
+      }
+      return '${directory.path}/$fileName';
+    } else if (Platform.isIOS) {
+      // iOS: Save to Documents directory
+      final directory = await getApplicationDocumentsDirectory();
+      return '${directory.path}/$fileName';
+    } else if (Platform.isWindows) {
+      // Windows: Save to Downloads folder
+      final downloadsPath = '${Platform.environment['USERPROFILE']}\\Downloads';
+      final directory = Directory(downloadsPath);
+      if (!await directory.exists()) {
+        await directory.create(recursive: true);
+      }
+      return '$downloadsPath\\$fileName';
+    } else if (Platform.isMacOS) {
+      // MacOS: Save to Downloads folder
+      final downloadsPath = '${Platform.environment['HOME']}/Downloads';
+      final directory = Directory(downloadsPath);
+      if (!await directory.exists()) {
+        await directory.create(recursive: true);
+      }
+      return '$downloadsPath/$fileName';
+    } else {
+      // Linux or other: Save to current directory
+      final directory = Directory('./downloads');
+      if (!await directory.exists()) {
+        await directory.create(recursive: true);
+      }
+      return '${directory.path}/$fileName';
+    }
+  }
+
+  // Show dialog when no files exist
+  static void _showNoFilesDialog(BuildContext context, int sbNo) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.info_outline, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('No Attachments'),
+          ],
+        ),
+        content: Text(
+          'Billing #$sbNo has no attached files.\n\n'
+          'To add files, edit the billing entry and upload attachments.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Show download result
+  static void _showDownloadResult(
+    BuildContext context,
+    List<String> success,
+    List<String> failed,
+  ) {
+    if (success.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('❌ No files were downloaded'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 3),
+        ),
+      );
+    } else if (failed.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('✅ ${success.length} file(s) downloaded successfully'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: 'OPEN FOLDER',
+            onPressed: () async {
+              String folderPath;
+              if (Platform.isWindows) {
+                folderPath =
+                    '${Platform.environment['USERPROFILE']}\\Downloads';
+              } else if (Platform.isAndroid) {
+                folderPath = '/storage/emulated/0/Download';
+              } else if (Platform.isIOS) {
+                final directory = await getApplicationDocumentsDirectory();
+                folderPath = directory.path;
+              } else if (Platform.isMacOS) {
+                folderPath = '${Platform.environment['HOME']}/Downloads';
+              } else {
+                folderPath = './downloads';
+              }
+
+              // Open the folder
+              await OpenFile.open(folderPath);
+            },
           ),
         ),
-      ),
-    );
-  }
-
-  void _updatenetamntrecdTotalController() {
-    final total = _netamntrecdEntries.fold(0.0, (sum, e) => sum + e.amount);
-    _netamntrecdTotalController.text = formatIndianNumber(total);
-    _calculateTotals();
-  }
-}
-
-Future<io.File> _saveToFile(String name, List<int> bytes) async {
-  final tempDir = await getTemporaryDirectory();
-  final file = io.File('${tempDir.path}/$name');
-  return await file.writeAsBytes(bytes);
-}
-
-class IndianNumberInputFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    if (newValue.text.isEmpty) return newValue;
-
-    // ← If it contains operators, don't format — let it stay as expression
-    if (RegExp(r'[+\-*/%(). ]').hasMatch(newValue.text)) {
-      return newValue;
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '⚠️ ${success.length} downloaded, ${failed.length} failed: ${failed.join(", ")}',
+          ),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 5),
+        ),
+      );
     }
-
-    String digitsOnly = newValue.text.replaceAll(',', '');
-
-    if (!RegExp(r'^\d*$').hasMatch(digitsOnly)) return oldValue;
-    if (digitsOnly.isEmpty) return newValue.copyWith(text: '');
-
-    final formatted = formatIndianNumber(int.parse(digitsOnly));
-
-    return TextEditingValue(
-      text: formatted,
-      selection: TextSelection.collapsed(offset: formatted.length),
-    );
   }
 }
 
@@ -4701,50 +3242,4 @@ String formatIndianNumber(num value) {
   }
 
   return isNegative ? '-$formatted' : formatted;
-}
-
-class _ActionIconButton extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final String tooltip;
-  final VoidCallback onPressed;
-
-  const _ActionIconButton({
-    required this.icon,
-    required this.color,
-    required this.tooltip,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.all(6),
-          child: Icon(
-            icon,
-            size: 18,
-            color: color,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class UpperCaseTextFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    return TextEditingValue(
-      text: newValue.text.toUpperCase(),
-      selection: newValue.selection,
-    );
-  }
 }

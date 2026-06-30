@@ -905,7 +905,8 @@ class SalesBillingModel {
   final int sbno;
   final int? cusid;
   final int? projid;
-  final String? stageidname;
+  /*final String? stageName;
+  final double? stagePer;*/
   final String? billno;
   final DateTime? billdate;
   final String? billdesc;
@@ -955,72 +956,77 @@ class SalesBillingModel {
   final String? sbfname;
   final String? sbftype;
   final int? sbfcount;
+  final String? stagename;
+  final String? stageper;
 
   String? removedFiles;
 
-  SalesBillingModel({
-    required this.sbno,
-    this.cusid,
-    this.projid,
-    this.stageidname,
-    this.billno,
-    this.billdate,
-    this.billdesc,
-    this.perofwork,
-    this.workdoneamnt,
-    this.billamnt,
-    this.gstper,
-    this.gstamnt,
-    this.billtotamnt,
-    this.tdsamnt,
-    this.tdscgstamnt,
-    this.tdssgstamnt,
-    this.secdepamnt,
-    this.labcessamnt,
-    this.mobintamnt,
-    this.secadvamnt,
-    this.secadvremks,
-    this.mobadvamnt,
-    this.mobadvremks,
-    this.othdedamnt,
-    this.othdedremks,
-    this.whamnt,
-    this.whremks,
-    this.mobadvrecamnt,
-    this.mobadvrecremks,
-    this.whrlseamnt,
-    this.whrlseremks,
-    this.totdedamnt,
-    this.netrecamnt,
-    this.netrecdamnt,
-    this.netrecddt,
-    this.netrecdremks,
-    this.outstandamnt,
-    this.itper,
-    this.itamnt,
-    this.retnper,
-    this.retnamnt,
-    this.dedamnt,
-    this.recamnt,
-    this.recdate,
-    this.adduser,
-    this.adddate,
-    this.edituser,
-    this.editdate,
-    this.files,
-    this.billfiles,
-    this.sbfname,
-    this.sbftype,
-    this.sbfcount,
-    this.removedFiles,
-  });
+  SalesBillingModel(
+      {required this.sbno,
+      this.cusid,
+      this.projid,
+      /*this.stageName,
+      this.stagePer,*/
+      this.billno,
+      this.billdate,
+      this.billdesc,
+      this.perofwork,
+      this.workdoneamnt,
+      this.billamnt,
+      this.gstper,
+      this.gstamnt,
+      this.billtotamnt,
+      this.tdsamnt,
+      this.tdscgstamnt,
+      this.tdssgstamnt,
+      this.secdepamnt,
+      this.labcessamnt,
+      this.mobintamnt,
+      this.secadvamnt,
+      this.secadvremks,
+      this.mobadvamnt,
+      this.mobadvremks,
+      this.othdedamnt,
+      this.othdedremks,
+      this.whamnt,
+      this.whremks,
+      this.mobadvrecamnt,
+      this.mobadvrecremks,
+      this.whrlseamnt,
+      this.whrlseremks,
+      this.totdedamnt,
+      this.netrecamnt,
+      this.netrecdamnt,
+      this.netrecddt,
+      this.netrecdremks,
+      this.outstandamnt,
+      this.itper,
+      this.itamnt,
+      this.retnper,
+      this.retnamnt,
+      this.dedamnt,
+      this.recamnt,
+      this.recdate,
+      this.adduser,
+      this.adddate,
+      this.edituser,
+      this.editdate,
+      this.files,
+      this.billfiles,
+      this.sbfname,
+      this.sbftype,
+      this.sbfcount,
+      this.removedFiles,
+      this.stagename,
+      this.stageper});
 
   factory SalesBillingModel.fromJson(Map<String, dynamic> json) {
     return SalesBillingModel(
       sbno: json['SBNO'] ?? 0,
       cusid: json['CUSID'],
       projid: json['PROJID'],
-      stageidname: json['STAGEIDNAME'] ?? json['STAGEID'],
+      /*stageName: json['STAGEIDNAME'],
+      stagePer: double.tryParse(json['STAGEPER'].toString()) ?? 0,*/
       billno: json['BILLNO'],
       billdate: json['BILLDATE'] != null
           ? DateTime.tryParse(json['BILLDATE'].toString())
@@ -1080,6 +1086,8 @@ class SalesBillingModel {
       sbfname: json['SBFNAME'],
       sbftype: json['SBFTYPE'],
       sbfcount: json['SBFCOUNT'],
+      stagename: json['STAGENAME'] as String?,
+      stageper: json['STAGEPER'] as String?,
     );
   }
 
@@ -1093,7 +1101,8 @@ class SalesBillingModel {
         'SBNO': sbno,
         'CUSID': cusid,
         'PROJID': projid,
-        'STAGEIDNAME': stageidname,
+        /*'STAGEIDNAME': stageName,
+        'STAGEPER': stagePer,*/
         'BILLNO': billno,
         'BILLDATE': billdate?.toIso8601String(),
         'BILLDESC': billdesc,
@@ -1326,38 +1335,40 @@ class SalesDesignModel {
   String? removedfiles;
   List<FileUploadModel>? files;
 
-  SalesDesignModel({
-    this.sdno,
-    this.cusid,
-    this.projid,
-    this.sddt,
-    this.selename,
-    this.seleunit,
-    this.seletot,
-    this.selesno,
-    this.sfname,
-    this.sftype,
-    this.sfcount,
-    this.dfname,
-    this.dftype,
-    this.dfcount,
-    this.deleqnty,
-    this.deletot,
-    this.deleremks,
-    this.adduser,
-    this.edituser,
-    this.deluser,
-    this.adddate,
-    this.editdate,
-    this.deldate,
-    this.deleted,
-    this.removedSalesFiles,
-    this.removedDesignFiles,
-    this.salesFiles,
-    this.designFiles,
-    this.removedfiles,
-    this.files,
-  });
+  final int? changedSelesno;
+
+  SalesDesignModel(
+      {this.sdno,
+      this.cusid,
+      this.projid,
+      this.sddt,
+      this.selename,
+      this.seleunit,
+      this.seletot,
+      this.selesno,
+      this.sfname,
+      this.sftype,
+      this.sfcount,
+      this.dfname,
+      this.dftype,
+      this.dfcount,
+      this.deleqnty,
+      this.deletot,
+      this.deleremks,
+      this.adduser,
+      this.edituser,
+      this.deluser,
+      this.adddate,
+      this.editdate,
+      this.deldate,
+      this.deleted,
+      this.removedSalesFiles,
+      this.removedDesignFiles,
+      this.salesFiles,
+      this.designFiles,
+      this.removedfiles,
+      this.files,
+      this.changedSelesno});
 
   factory SalesDesignModel.fromJson(Map<String, dynamic> json) {
     return SalesDesignModel(
@@ -1400,7 +1411,7 @@ class SalesDesignModel {
       'SELENAME': selename,
       'SELEUNIT': seleunit,
       'SELETOT': seletot,
-      'SELESNO': selesno,
+      'CHANGEDSELESNO': changedSelesno,
       'SFNAME': sfname,
       'SFTYPE': sftype,
       'SFCOUNT': sfcount,
@@ -1530,36 +1541,38 @@ class ProjectcontrolModel {
   String? removedfiles;
   List<FileUploadModel>? files;
 
-  ProjectcontrolModel({
-    this.SPCNO,
-    this.CUSID,
-    this.PROJID,
-    this.SPCDT,
-    this.SPCNAME,
-    this.SPCTOT,
-    this.SPCSNO,
-    this.SFNAME,
-    this.SFTYPE,
-    this.SFCOUNT,
-    this.PCFNAME,
-    this.PCFTYPE,
-    this.PCFCOUNT,
-    this.PCTOT,
-    this.PCREMKS,
-    this.ADDUSER,
-    this.EDITUSER,
-    this.DELUSER,
-    this.ADDDATE,
-    this.EDITDATE,
-    this.DELDATE,
-    this.DELETED,
-    this.removedSalesFiles,
-    this.removedDesignFiles,
-    this.salesFiles,
-    this.designFiles,
-    this.removedfiles,
-    this.files,
-  });
+  final int? changedSPCsno;
+
+  ProjectcontrolModel(
+      {this.SPCNO,
+      this.CUSID,
+      this.PROJID,
+      this.SPCDT,
+      this.SPCNAME,
+      this.SPCTOT,
+      this.SPCSNO,
+      this.SFNAME,
+      this.SFTYPE,
+      this.SFCOUNT,
+      this.PCFNAME,
+      this.PCFTYPE,
+      this.PCFCOUNT,
+      this.PCTOT,
+      this.PCREMKS,
+      this.ADDUSER,
+      this.EDITUSER,
+      this.DELUSER,
+      this.ADDDATE,
+      this.EDITDATE,
+      this.DELDATE,
+      this.DELETED,
+      this.removedSalesFiles,
+      this.removedDesignFiles,
+      this.salesFiles,
+      this.designFiles,
+      this.removedfiles,
+      this.files,
+      this.changedSPCsno});
 
   factory ProjectcontrolModel.fromJson(Map<String, dynamic> json) {
     return ProjectcontrolModel(
@@ -1599,7 +1612,7 @@ class ProjectcontrolModel {
       'SPCDT': SPCDT,
       'SPCNAME': SPCNAME,
       'SPCTOT': SPCTOT,
-      'SPCSNO': SPCSNO,
+      'CHANGEDSPCSNO': changedSPCsno,
       'SFNAME': SFNAME,
       'SFTYPE': SFTYPE,
       'SFCOUNT': SFCOUNT,
@@ -1682,5 +1695,83 @@ class BillingData {
       'projectId': projectId,
       'rowData': rowData,
     };
+  }
+}
+
+class SalesDesignSummaryModel {
+  final int? sdno;
+  final int? customerId;
+  final int? projectId;
+  final String? projectName;
+
+  final double? salesQnty;
+  final double? designQnty;
+
+  SalesDesignSummaryModel({
+    this.sdno,
+    this.customerId,
+    this.projectId,
+    this.projectName,
+    this.salesQnty,
+    this.designQnty,
+  });
+
+  factory SalesDesignSummaryModel.fromJson(Map<String, dynamic> json) {
+    return SalesDesignSummaryModel(
+      sdno: json['SDNO'],
+      customerId: json['CUSTOMERID'],
+      projectId: json['PROJECTID'],
+      projectName: json['PROJECTNAME'],
+      salesQnty: double.tryParse(json['SALESQNTY'].toString()) ?? 0,
+      designQnty: double.tryParse(json['DESIGNQNTY'].toString()) ?? 0,
+    );
+  }
+}
+
+class SalesPCSummaryModel {
+  final int? spcno;
+  final int? customerId;
+  final int? projectId;
+  final String? projectName;
+
+  final double? salesQnty;
+  final double? pcQnty;
+
+  SalesPCSummaryModel({
+    this.spcno,
+    this.customerId,
+    this.projectId,
+    this.projectName,
+    this.salesQnty,
+    this.pcQnty,
+  });
+
+  factory SalesPCSummaryModel.fromJson(Map<String, dynamic> json) {
+    return SalesPCSummaryModel(
+      spcno: json['SPCNO'],
+      customerId: json['CUSTOMERID'],
+      projectId: json['PROJECTID'],
+      projectName: json['PROJECTNAME'],
+      salesQnty: double.tryParse(json['SALESQNTY'].toString()) ?? 0,
+      pcQnty: double.tryParse(json['PCQNTY'].toString()) ?? 0,
+    );
+  }
+}
+
+class StageModel {
+  final int? stageId;
+  final String? stageName;
+  final String? stagePer;
+
+  StageModel({this.stageId, this.stageName, this.stagePer});
+
+  factory StageModel.fromJson(Map<String, dynamic> json) {
+    return StageModel(
+      stageId: json['STAGEID'] is int
+          ? json['STAGEID']
+          : int.tryParse(json['STAGEID']?.toString() ?? ''),
+      stageName: json['STAGENAME']?.toString(),
+      stagePer: json['STAGEPER']?.toString(),
+    );
   }
 }
