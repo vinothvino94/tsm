@@ -1121,7 +1121,8 @@ class _OverAllSummaryScreenState extends State<OverAllSummaryScreen> {
                         initialProjectId: item.projectId,
                         initialCustomerName:
                             '${matchedCustomer.customerId} - ${matchedCustomer.companyName}',
-                        initialProjectName: item.projectName ?? '',
+                        initialProjectName:
+                            '${item.projectId} - ${item.projectName ?? ''}',
                       ),
                     ),
                   );
@@ -1194,8 +1195,8 @@ class _OverAllSummaryScreenState extends State<OverAllSummaryScreen> {
                         initialProjectId: item.projectId,
                         initialCustomerName:
                             '${matchedCustomer.customerId} - ${matchedCustomer.companyName}',
-                        initialProjectName: item.projectName ??
-                            '', // ← also fixed: no duplicate prefix
+                        initialProjectName:
+                            '${item.projectId} - ${item.projectName ?? ''}',
                       ),
                     ),
                   );

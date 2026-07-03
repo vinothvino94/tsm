@@ -274,4 +274,27 @@ class FileService {
       };
     }
   }
+
+  Future<Map<String, dynamic>?> checkChecklistExists({
+    required String clientName,
+    required String enqidName,
+  }) async {
+    final response = await http.post(
+      ApiUtils.getUri('CheckSalesChecklistExists'),
+      body: {
+        'ClientName': clientName,
+        'EnqidName': enqidName,
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+
+      if (decoded['Success'] == true && decoded['Exists'] == true) {
+        return decoded['Data'] as Map<String, dynamic>;
+      }
+    }
+
+    return null;
+  }
 }

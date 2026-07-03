@@ -40,6 +40,10 @@ class _ViewChecklistScreenState extends State<ViewChecklistScreen> {
   int empCode = 0;
   String empName = '';
 
+  String _selectedStatusFilter = 'All'; // 'All', 'Approved', 'Pending'
+
+  final List<String> _statusFilterOptions = ['All', 'Approved', 'Pending'];
+
   @override
   void initState() {
     super.initState();
@@ -85,6 +89,33 @@ class _ViewChecklistScreenState extends State<ViewChecklistScreen> {
                       onChanged: (value) {
                         setState(() {
                           _searchQuery = value;
+                        });
+                      },
+                    ),
+                  ),
+                  SizedBox(height: 10),
+
+                  // Status Filter Dropdown
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: DropdownButtonFormField<String>(
+                      value: _selectedStatusFilter,
+                      decoration: _inputDecoration('Filter by Status').copyWith(
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                      ),
+                      items: _statusFilterOptions
+                          .map((status) => DropdownMenuItem(
+                                value: status,
+                                child: Text(status),
+                              ))
+                          .toList(),
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setState(() {
+                          _selectedStatusFilter = value;
                         });
                       },
                     ),
@@ -327,20 +358,29 @@ class _ViewChecklistScreenState extends State<ViewChecklistScreen> {
   }
 
   List<MapEntry<int, List<SalesChecklistModel>>> _getFilteredGroupedList() {
-    final groupedList = _groupedEntries.entries.toList();
+    var entries = _groupedEntries.entries.toList();
 
-    return groupedList.where((group) {
-      final tsNo = group.key;
-      final entries = group.value;
-      final firstEntry = entries.first;
+    // Existing search filter (by CHKLNO) — keep whatever you already have here
+    if (_searchQuery.isNotEmpty) {
+      entries = entries
+          .where((e) => e.key.toString().contains(_searchQuery))
+          .toList();
+    }
 
-      // Apply search filter
-      if (_searchQuery.isNotEmpty && !tsNo.toString().contains(_searchQuery)) {
-        return false;
-      }
+    // New: status filter by CHKAPPSTATUS
+    if (_selectedStatusFilter != 'All') {
+      entries = entries.where((e) {
+        final status = e.value.isNotEmpty ? e.value.first.chkappstatus : null;
+        if (_selectedStatusFilter == 'Approved') {
+          return status == 'Y';
+        } else {
+          // Pending = anything not 'Y' (covers null, 'N', etc.)
+          return status != 'Y';
+        }
+      }).toList();
+    }
 
-      return true;
-    }).toList();
+    return entries;
   }
 
   Widget _buildChecklistCard(
@@ -395,22 +435,24 @@ class _ViewChecklistScreenState extends State<ViewChecklistScreen> {
                   Row(
                     children: [
                       // Approve Icon
-                      IconButton(
-                        icon: const Icon(
-                          Icons.check_circle,
-                          color: Colors.green,
-                          size: 20,
+                      if (firstEntry.chkappstatus != 'Y')
+                        Row(
+                          children: [
+                            IconButton(
+                              icon: const Icon(
+                                Icons.check_circle,
+                                color: Colors.green,
+                                size: 20,
+                              ),
+                              tooltip: 'Approve',
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                              onPressed: () =>
+                                  _showApproveConfirmationDialog(chklNo),
+                            ),
+                            const SizedBox(width: 8),
+                          ],
                         ),
-                        tooltip: firstEntry.chkappstatus == 'Approved'
-                            ? 'Already Approved'
-                            : 'Approve',
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                        onPressed: firstEntry.chkappstatus == 'Approved'
-                            ? null // Disable button if already approved
-                            : () => _showApproveConfirmationDialog(chklNo),
-                      ),
-                      const SizedBox(width: 8),
 
                       // View Icon
                       IconButton(
@@ -569,7 +611,7 @@ class _ViewChecklistScreenState extends State<ViewChecklistScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Project : ${firstEntry.projectname ?? '-'}',
+                      'Project : ${firstEntry.enqidname ?? '-'}',
                       style: const TextStyle(
                         fontSize: 14,
                       ),
@@ -854,7 +896,7 @@ class QuotationAgreementPdfService {
     // Get header data from first entry
     final firstEntry = checklistEntries.first;
     final clientName = firstEntry.clientname ?? 'Not specified';
-    final projectName = firstEntry.projectname ?? 'Not specified';
+    final projectName = firstEntry.enqidname ?? 'Not specified';
     final verifiedBy = firstEntry.verifiedby ?? 'Not specified';
     final reviewedBy = firstEntry.reviewedby ?? 'Not specified';
 

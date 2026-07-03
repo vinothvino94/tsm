@@ -551,12 +551,29 @@ class CustomerModel {
   }
 }
 
+class EnquiryModel {
+  final int enquiryId;
+  final String enquiryName;
+
+  EnquiryModel({
+    required this.enquiryId,
+    required this.enquiryName,
+  });
+
+  factory EnquiryModel.fromJson(Map<String, dynamic> json) {
+    return EnquiryModel(
+      enquiryId: json['ENQUIRYID'] ?? 0,
+      enquiryName: json['ENQUIRYNAME'] ?? '',
+    );
+  }
+}
+
 class SalesChecklistModel {
   int? chklno;
   DateTime? chkldt;
 
   String? clientname;
-  String? projectname;
+  String? enqidname;
   String? verifiedby;
   String? reviewedby;
   String? siteaddress;
@@ -632,7 +649,7 @@ class SalesChecklistModel {
     this.chklno,
     this.chkldt,
     this.clientname,
-    this.projectname,
+    this.enqidname,
     this.verifiedby,
     this.reviewedby,
     this.siteaddress,
@@ -698,7 +715,7 @@ class SalesChecklistModel {
       chklno: json['CHKLNO'],
       chkldt: json['CHKLDT'] != null ? DateTime.parse(json['CHKLDT']) : null,
       clientname: json['CLIENTNAME'],
-      projectname: json['PROJECTNAME'],
+      enqidname: json['ENQIDNAME'],
       verifiedby: json['VERIFIEDBY'],
       reviewedby: json['REVIEWEDBY'],
       siteaddress: json['SITEADDRESS'],
@@ -772,7 +789,7 @@ class SalesChecklistModel {
       "CHKLNO": chklno,
       "CHKLDT": chkldt?.toIso8601String(),
       "CLIENTNAME": clientname,
-      "PROJECTNAME": projectname,
+      "ENQIDNAME": enqidname,
       "VERIFIEDBY": verifiedby,
       "REVIEWEDBY": reviewedby,
       "SITEADDRESS": siteaddress,

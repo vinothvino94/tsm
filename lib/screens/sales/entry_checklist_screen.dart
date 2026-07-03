@@ -13,6 +13,7 @@ import 'package:tsm/api/api_utils.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../colors/app_colors.dart';
 import '../../models/project.dart';
+import '../../services/file_service.dart';
 import '../../services/prefrence_helper.dart';
 import '../../widgets/crop_screen.dart';
 import 'dart:io' as io;
@@ -36,6 +37,7 @@ class EntryChecklistScreen extends StatefulWidget {
 class _EntryChecklistScreenState extends State<EntryChecklistScreen> {
   final _scrollController = ScrollController();
   final _formKey = GlobalKey<FormState>();
+  final FileService _fileService = FileService();
   TextEditingController customerController = TextEditingController();
   TextEditingController siteController = TextEditingController();
   TextEditingController verifiedbyController = TextEditingController();
@@ -75,6 +77,7 @@ class _EntryChecklistScreenState extends State<EntryChecklistScreen> {
       TextEditingController();
   int? selectedProjectId;
   bool isSameAsSiteAddress = false;
+  bool isViewOnly = false;
   bool isSameAsSiteGST = false;
   DateTime? efffectiveDate;
   final List<String> bankreq = [
@@ -333,6 +336,7 @@ class _EntryChecklistScreenState extends State<EntryChecklistScreen> {
 
   List<SalesEmployeeModel> salesEmployees = [];
   List<CustomerModel> customerList = [];
+  List<EnquiryModel> enquiryList = [];
   List<Project> projectList = [];
 
   int? selectedCustomerId;
@@ -342,12 +346,16 @@ class _EntryChecklistScreenState extends State<EntryChecklistScreen> {
   List<PlatformFile> _attachedFiles = [];
   List<String> _existingFiles = [];
   List<String> _removedFiles = [];
+  Map<String, bool> labourcompSelections = {};
 
   @override
   void initState() {
     super.initState();
     loadSalesDetails();
     loadCustomers();
+    labourcompSelections = {
+      for (var item in labourcompsigned) item: true,
+    };
     _loadUserDetails();
     if (widget.checklistData != null) {
       _populateFormWithData(widget.checklistData!);
@@ -420,7 +428,7 @@ class _EntryChecklistScreenState extends State<EntryChecklistScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      ///Customer Name & Project Name
+                      ///Customer Name & Enquiry Name
                       Row(
                         children: [
                           Expanded(
@@ -504,37 +512,39 @@ class _EntryChecklistScreenState extends State<EntryChecklistScreen> {
                             child: isViewOnly
                                 ? TextFormField(
                                     controller: siteController,
-                                    decoration: _inputDecoration("Site Name"),
+                                    decoration:
+                                        _inputDecoration("Enquiry Name"),
                                     readOnly: true,
                                     enabled: false,
                                   )
-                                : Autocomplete<Project>(
+                                : Autocomplete<EnquiryModel>(
                                     displayStringForOption: (option) =>
-                                        "${option.projectId} - ${option.projectName}",
+                                        "${option.enquiryId} - ${option.enquiryName}",
                                     optionsBuilder:
                                         (TextEditingValue textEditingValue) {
                                       if (textEditingValue.text.isEmpty) {
-                                        return projectList;
+                                        return enquiryList;
                                       }
-                                      return projectList.where((project) {
-                                        return project.projectName
+                                      return enquiryList.where((project) {
+                                        return project.enquiryName
                                                 .toLowerCase()
                                                 .contains(
                                                   textEditingValue.text
                                                       .toLowerCase(),
                                                 ) ||
-                                            project.projectId
+                                            project.enquiryId
                                                 .toString()
                                                 .contains(
                                                     textEditingValue.text);
                                       });
                                     },
-                                    onSelected: (Project selection) {
+                                    onSelected: (EnquiryModel selection) {
                                       siteController.text =
-                                          "${selection.projectId} - ${selection.projectName}";
+                                          "${selection.enquiryId} - ${selection.enquiryName}";
                                       setState(() {
-                                        selectedProjectId = selection.projectId;
+                                        selectedProjectId = selection.enquiryId;
                                       });
+                                      _checkExistingChecklist();
                                     },
                                     fieldViewBuilder: (
                                       context,
@@ -547,8 +557,8 @@ class _EntryChecklistScreenState extends State<EntryChecklistScreen> {
                                         controller: controller,
                                         focusNode: focusNode,
                                         decoration: InputDecoration(
-                                          labelText: "Site Name",
-                                          hintText: "Search Site",
+                                          labelText: "Enquiry Name",
+                                          hintText: "Enquiry Site",
                                           border: const OutlineInputBorder(),
                                           suffixIcon: controller.text.isNotEmpty
                                               ? IconButton(
@@ -3740,45 +3750,37 @@ class _EntryChecklistScreenState extends State<EntryChecklistScreen> {
                       const SizedBox(height: 16),
 
                       ///Labour compliance including insurance
-                      Row(
+                      Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: DropdownButtonFormField<String>(
-                              value: labourcomp,
-                              decoration: _inputDecoration("Lab comp incl ins")
-                                  .copyWith(
-                                suffixIcon: (!isViewOnly && labourcomp != null)
-                                    ? IconButton(
-                                        onPressed: () {
+                          Text(
+                            "Lab comp incl ins",
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                          const SizedBox(height: 4),
+                          Container(
+                            decoration: BoxDecoration(
+                              border: Border.all(color: Colors.grey.shade400),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Column(
+                              children: labourcompsigned.map((status) {
+                                return CheckboxListTile(
+                                  title: Text(status),
+                                  value: labourcompSelections[status] ?? false,
+                                  controlAffinity:
+                                      ListTileControlAffinity.leading,
+                                  dense: true,
+                                  onChanged: isViewOnly
+                                      ? null
+                                      : (checked) {
                                           setState(() {
-                                            labourcomp = null;
-                                            selectedlabourcomp = null;
+                                            labourcompSelections[status] =
+                                                checked ?? false;
                                           });
                                         },
-                                        icon: const Icon(Icons.clear, size: 18),
-                                        padding: EdgeInsets.zero,
-                                        tooltip: 'Clear selection',
-                                      )
-                                    : null,
-                              ),
-                              items: labourcompsigned.map((status) {
-                                return DropdownMenuItem<String>(
-                                  value: status,
-                                  child: Text(status),
                                 );
                               }).toList(),
-                              onChanged: isViewOnly
-                                  ? null
-                                  : (value) {
-                                      setState(() {
-                                        labourcomp = value;
-
-                                        if (value == 'No') {
-                                          selectedlabourcomp = null;
-                                        }
-                                      });
-                                    },
                             ),
                           ),
                         ],
@@ -4322,7 +4324,7 @@ class _EntryChecklistScreenState extends State<EntryChecklistScreen> {
   Future<void> loadProjects(int customerId) async {
     try {
       final response = await http.post(
-        ApiUtils.getUri('ProjectDetails'),
+        ApiUtils.getUri('EnquiryDetails'),
         headers: {
           "Content-Type": "application/json",
         },
@@ -4335,10 +4337,10 @@ class _EntryChecklistScreenState extends State<EntryChecklistScreen> {
         final data = jsonDecode(response.body);
 
         if (data['Success'] == true) {
-          final List list = data['ProjectDetails'];
+          final List list = data['EnquiryDetails'];
 
           setState(() {
-            projectList = list.map((e) => Project.fromJson(e)).toList();
+            enquiryList = list.map((e) => EnquiryModel.fromJson(e)).toList();
           });
         }
       }
@@ -4347,220 +4349,13 @@ class _EntryChecklistScreenState extends State<EntryChecklistScreen> {
     }
   }
 
-  /*Future<void> _insertSalesChecklist() async {
-    try {
-      final isEditing = widget.checklistData != null;
-
-      final requestBody = {
-        // For Update: Include CHKLNO (always include for update, don't include for insert)
-        if (isEditing) "CHKLNO": widget.checklistData?.chklno,
-
-        // For Insert: Include CLIENTNAME and PROJECTNAME
-        "CLIENTNAME": customerController.text,
-        "PROJECTNAME": siteController.text,
-
-        // Common fields for both Insert and Update
-        "VERIFIEDBY": verifiedbyController.text,
-        "REVIEWEDBY": reviewedbyController.text,
-        "SITEADDRESS": siteaddressController.text,
-        "BILLINGADDRESS": billingaddressController.text,
-        "SITEGSTNO": sitegstController.text,
-        "BILLINGGSTNO": billgstController.text,
-        "EFFECTIVEDATE": efffectiveDate != null
-            ? DateFormat('yyyy-MM-ddTHH:mm:ss').format(efffectiveDate!)
-            : null,
-        "WOVALUEINCLGST": workordervalueincludinggstController.text.isEmpty
-            ? null
-            : double.tryParse(
-                workordervalueincludinggstController.text.replaceAll(',', '')),
-        "PROJECTTENURE": tenureController.text,
-        "DEFLIABPERIOD": liabilityController.text,
-        "CONTRACTTYPE": contractController.text,
-        "BILLINGMETHOD": methodofbillingController.text,
-        "PAYMENTTERMS": billingfrequencyController.text,
-        "MILESTONES": milestonesController.text,
-        "RETENTION": retentionController.text,
-        "BGREQ": selectedbankreq,
-        "ESCDETAILS": selectedescl,
-        "TAXSTRCHANGES": selectedtax,
-        "SCOPEOFWORKSIGNED": workscope == "No"
-            ? "No - ${workscopeController.text}"
-            : (workscope == "Yes" ? "Yes - ${selectedworkscope ?? ''}" : ""),
-        "WPMETHODOLOGY": waterproofing == "No"
-            ? "No - ${waterproffingController.text}"
-            : (waterproofing == "Yes"
-                ? "Yes - ${selectedwaterproffing ?? ''}"
-                : ""),
-        "ANTITERMITEWORK": antitermite == "No"
-            ? "No - ${antitermiteController.text}"
-            : (antitermite == "Yes"
-                ? "Yes - ${selectedantitermite ?? ''}"
-                : ""),
-        "SITEACCESSISSUES": siteacc == "No"
-            ? "No - ${siteaccController.text}"
-            : (siteacc == "Yes" ? "Yes - ${selectedsiteacc ?? ''}" : ""),
-        "DEWATERING": dewatering == "No"
-            ? "No - ${dewateringController.text}"
-            : (dewatering == "Yes" ? "Yes - ${selecteddewatering ?? ''}" : ""),
-        "ELECTRICITYWATER": electricitywater == "No"
-            ? "No - ${electricitywaterController.text}"
-            : (electricitywater == "Yes"
-                ? "Yes - ${selectedelectricitywater ?? ''}"
-                : ""),
-        "STEELCEMENTBRANDS": steelcement == "No"
-            ? "No - ${steelcementController.text}"
-            : (steelcement == "Yes"
-                ? "Yes - ${selectedsteelcement ?? ''}"
-                : ""),
-        "NONTENITEMSMAR": tendermargin == "No"
-            ? "No - ${tendermarginController.text}"
-            : (tendermargin == "Yes"
-                ? "Yes - ${selectedtendermargin ?? ''}"
-                : ""),
-        "SOILEXCDETAILS": soil == "No"
-            ? "No - ${soilController.text}"
-            : (soil == "Yes" ? "Yes - ${selectedsoil ?? ''}" : ""),
-        "BUILDINGAPP": statapproval == "No"
-            ? "No - ${statapprovalController.text}"
-            : (statapproval == "Yes"
-                ? "Yes - ${selectedstatapproval ?? ''}"
-                : ""),
-        "SOILINV": soilsurvey == "No"
-            ? "No - ${soilsurveyController.text}"
-            : (soilsurvey == "Yes" ? "Yes - ${selectedsoilsurvey ?? ''}" : ""),
-        "BARRICATION": barrication == "No"
-            ? "No - ${barricationController.text}"
-            : (barrication == "Yes"
-                ? "Yes - ${selectedbarrication ?? ''}"
-                : ""),
-        "TREECUTTINGDEM": treecutting == "No"
-            ? "No - ${treecuttingController.text}"
-            : (treecutting == "Yes"
-                ? "Yes - ${selectedtreecutting ?? ''}"
-                : ""),
-        "LABOURACCOM": labouracc == "No"
-            ? "No - ${labouraccController.text}"
-            : (labouracc == "Yes" ? "Yes - ${selectedlabouracc ?? ''}" : ""),
-        "BRICKWORK": brickwork == "No"
-            ? "No - ${brickworkController.text}"
-            : (brickwork == "Yes" ? "Yes - ${selectedbrickwork ?? ''}" : ""),
-        "SITESECURITY": sitesec == "No"
-            ? "No - ${sitesecController.text}"
-            : (sitesec == "Yes" ? "Yes - ${selectedsitesec ?? ''}" : ""),
-        "LIGHTINGARR": lightarr == "No"
-            ? "No - ${lightarrController.text}"
-            : (lightarr == "Yes" ? "Yes - ${selectedlightarr ?? ''}" : ""),
-        "FORCEMAJEURECON": forcemaj,
-        "ARBITRATIONCLAUSE": arbitration,
-        "LABCOMINS": labourcomp,
-        "LIQUIDATEDDAMAGES": liqdamage,
-        "STABILITYCERTCLAUSE": stability,
-        "GROUTTEEMAXAPP": grout,
-        "EXJOINTREQ": jointreq == "No"
-            ? "No - ${jointreqController.text}"
-            : (jointreq == "Yes" ? "Yes - ${selectedjointreq ?? ''}" : ""),
-        "IDLECHARGES": idlecharg,
-        "THIRDPARTYTESTS": thirdpartytest,
-        "ADDUSER": empCode,
-        "FILES": _buildFilesList(),
-        "REMOVEDFILES":
-            _removedFiles.isNotEmpty ? _removedFiles.join(",") : null,
-      };
-
-      // Remove any null values from requestBody
-      final cleanedRequestBody = Map.from(requestBody)
-        ..removeWhere(
-            (key, value) => value == null || value.toString().isEmpty);
-
-      // Use the unified SaveSalesChecklist endpoint
-      final apiEndpoint = 'SaveSalesChecklist';
-
-      print("API URL : ${ApiUtils.getUri(apiEndpoint)}");
-      print("REQUEST BODY : ${jsonEncode(cleanedRequestBody)}");
-
-      final response = await http.post(
-        ApiUtils.getUri(apiEndpoint),
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: jsonEncode(cleanedRequestBody),
-      );
-
-      print("STATUS CODE : ${response.statusCode}");
-      print("RESPONSE BODY : ${response.body}");
-
-      // Check if response is valid JSON
-      if (response.body.trim().startsWith('<!DOCTYPE') ||
-          response.body.trim().startsWith('<html')) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Server error occurred. Please try again later.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
-      }
-
-      final data = jsonDecode(response.body);
-
-      if (data['Success'] == true) {
-        print("${isEditing ? 'UPDATE' : 'INSERT'} SUCCESS");
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(data['Message']),
-            backgroundColor: Colors.green,
-          ),
-        );
-        // ✅ Clear local states
-        _removedFiles.clear();
-        _attachedFiles.clear();
-
-        // ✅ Refresh the data by calling the callback or reloading from API
-        if (widget.onDataSaved != null) {
-          widget.onDataSaved!();
-        }
-
-        // ✅ For edit mode, update the local checklistData with new file list
-        if (isEditing && widget.checklistData != null) {
-          await _refreshChecklistData(widget.checklistData!.chklno);
-        }
-        if (!isEditing) {
-          clearAllFields();
-        }
-        Navigator.pop(context, true); // Return true to indicate data was saved
-      } else {
-        print("${isEditing ? 'UPDATE' : 'INSERT'} FAILED");
-        print("ERROR MESSAGE : ${data['Message']}");
-
-        String errorMessage = "";
-
-        if (data['Message'] is List) {
-          errorMessage = (data['Message'] as List).join("\n");
-        } else {
-          errorMessage = data['Message'].toString();
-        }
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(errorMessage),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      }
-    } catch (e, stackTrace) {
-      print("EXCEPTION ERROR : $e");
-      print("STACK TRACE : $stackTrace");
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString()),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }*/
+  String get selectedLabourCompString {
+    final selected = labourcompSelections.entries
+        .where((e) => e.value)
+        .map((e) => e.key)
+        .toList();
+    return selected.join(', ');
+  }
 
   Future<void> insertSalesChecklist() async {
     try {
@@ -4572,7 +4367,7 @@ class _EntryChecklistScreenState extends State<EntryChecklistScreen> {
 
         // For Insert: Include CLIENTNAME and PROJECTNAME
         "CLIENTNAME": customerController.text,
-        "PROJECTNAME": siteController.text,
+        "ENQIDNAME": siteController.text,
 
         // Common fields for both Insert and Update
         "VERIFIEDBY": verifiedbyController.text,
@@ -4667,7 +4462,7 @@ class _EntryChecklistScreenState extends State<EntryChecklistScreen> {
             : (lightarr == "Yes" ? "Yes - ${selectedlightarr ?? ''}" : ""),
         "FORCEMAJEURECON": forcemaj,
         "ARBITRATIONCLAUSE": arbitration,
-        "LABCOMINS": labourcomp,
+        "LABCOMINS": selectedLabourCompString,
         "LIQUIDATEDDAMAGES": liqdamage,
         "STABILITYCERTCLAUSE": stability,
         "GROUTTEEMAXAPP": grout,
@@ -4901,7 +4696,7 @@ class _EntryChecklistScreenState extends State<EntryChecklistScreen> {
   void _populateFormWithData(SalesChecklistModel data) {
     // Populate customer and project fields
     customerController.text = "${data.clientname ?? ''}";
-    siteController.text = "${data.projectname ?? ''}";
+    siteController.text = "${data.enqidname ?? ''}";
 
     // Populate verified by and reviewed by
     verifiedbyController.text = data.verifiedby ?? '';
@@ -5483,39 +5278,36 @@ class _EntryChecklistScreenState extends State<EntryChecklistScreen> {
     return _buildFileIcon(Icons.insert_drive_file, Colors.grey);
   }
 
-  Future<void> _refreshChecklistData(int? chklno) async {
-    if (chklno == null) return; // Guard clause
+  Future<void> _checkExistingChecklist() async {
+    if (selectedCustomerId == null || selectedProjectId == null) return;
+
+    final clientName = customerController.text;
+    final enqidName = siteController.text;
 
     try {
-      final response = await http.post(
-        ApiUtils.getUri('GetSalesChecklist'),
-        body: jsonEncode({"CHKLNO": chklno}),
+      final existing = await _fileService.checkChecklistExists(
+        clientName: clientName,
+        enqidName: enqidName,
       );
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['Success'] == true) {
-          final updatedData = SalesChecklistModel.fromJson(data['Data']);
+      if (existing != null) {
+        if (!mounted) return;
 
-          // Update the existing checklistData reference
-          widget.checklistData?.chkfname = updatedData.chkfname;
-          widget.checklistData?.chkftype = updatedData.chkftype;
-          widget.checklistData?.chkfcount = updatedData.chkfcount;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Checklist Already Saved"),
+            backgroundColor: Colors.red,
+          ),
+        );
 
-          // Update local _existingFiles
-          if (updatedData.chkfname != null &&
-              updatedData.chkfname!.isNotEmpty) {
-            _existingFiles =
-                updatedData.chkfname!.split(',').map((e) => e.trim()).toList();
-          } else {
-            _existingFiles = [];
-          }
-
-          setState(() {});
-        }
+        setState(() {
+          isViewOnly = true;
+          // Optional: prefill form fields from `existing` here, e.g.
+          // verifiedByController.text = existing['VERIFIEDBY'] ?? '';
+        });
       }
     } catch (e) {
-      debugPrint("Error refreshing checklist data: $e");
+      debugPrint("Error checking existing checklist: $e");
     }
   }
 }
@@ -5569,3 +5361,254 @@ Future<io.File> _saveToFile(String name, List<int> bytes) async {
   final file = io.File('${tempDir.path}/$name');
   return await file.writeAsBytes(bytes);
 }
+
+/*Future<void> _insertSalesChecklist() async {
+    try {
+      final isEditing = widget.checklistData != null;
+
+      final requestBody = {
+        // For Update: Include CHKLNO (always include for update, don't include for insert)
+        if (isEditing) "CHKLNO": widget.checklistData?.chklno,
+
+        // For Insert: Include CLIENTNAME and PROJECTNAME
+        "CLIENTNAME": customerController.text,
+        "PROJECTNAME": siteController.text,
+
+        // Common fields for both Insert and Update
+        "VERIFIEDBY": verifiedbyController.text,
+        "REVIEWEDBY": reviewedbyController.text,
+        "SITEADDRESS": siteaddressController.text,
+        "BILLINGADDRESS": billingaddressController.text,
+        "SITEGSTNO": sitegstController.text,
+        "BILLINGGSTNO": billgstController.text,
+        "EFFECTIVEDATE": efffectiveDate != null
+            ? DateFormat('yyyy-MM-ddTHH:mm:ss').format(efffectiveDate!)
+            : null,
+        "WOVALUEINCLGST": workordervalueincludinggstController.text.isEmpty
+            ? null
+            : double.tryParse(
+                workordervalueincludinggstController.text.replaceAll(',', '')),
+        "PROJECTTENURE": tenureController.text,
+        "DEFLIABPERIOD": liabilityController.text,
+        "CONTRACTTYPE": contractController.text,
+        "BILLINGMETHOD": methodofbillingController.text,
+        "PAYMENTTERMS": billingfrequencyController.text,
+        "MILESTONES": milestonesController.text,
+        "RETENTION": retentionController.text,
+        "BGREQ": selectedbankreq,
+        "ESCDETAILS": selectedescl,
+        "TAXSTRCHANGES": selectedtax,
+        "SCOPEOFWORKSIGNED": workscope == "No"
+            ? "No - ${workscopeController.text}"
+            : (workscope == "Yes" ? "Yes - ${selectedworkscope ?? ''}" : ""),
+        "WPMETHODOLOGY": waterproofing == "No"
+            ? "No - ${waterproffingController.text}"
+            : (waterproofing == "Yes"
+                ? "Yes - ${selectedwaterproffing ?? ''}"
+                : ""),
+        "ANTITERMITEWORK": antitermite == "No"
+            ? "No - ${antitermiteController.text}"
+            : (antitermite == "Yes"
+                ? "Yes - ${selectedantitermite ?? ''}"
+                : ""),
+        "SITEACCESSISSUES": siteacc == "No"
+            ? "No - ${siteaccController.text}"
+            : (siteacc == "Yes" ? "Yes - ${selectedsiteacc ?? ''}" : ""),
+        "DEWATERING": dewatering == "No"
+            ? "No - ${dewateringController.text}"
+            : (dewatering == "Yes" ? "Yes - ${selecteddewatering ?? ''}" : ""),
+        "ELECTRICITYWATER": electricitywater == "No"
+            ? "No - ${electricitywaterController.text}"
+            : (electricitywater == "Yes"
+                ? "Yes - ${selectedelectricitywater ?? ''}"
+                : ""),
+        "STEELCEMENTBRANDS": steelcement == "No"
+            ? "No - ${steelcementController.text}"
+            : (steelcement == "Yes"
+                ? "Yes - ${selectedsteelcement ?? ''}"
+                : ""),
+        "NONTENITEMSMAR": tendermargin == "No"
+            ? "No - ${tendermarginController.text}"
+            : (tendermargin == "Yes"
+                ? "Yes - ${selectedtendermargin ?? ''}"
+                : ""),
+        "SOILEXCDETAILS": soil == "No"
+            ? "No - ${soilController.text}"
+            : (soil == "Yes" ? "Yes - ${selectedsoil ?? ''}" : ""),
+        "BUILDINGAPP": statapproval == "No"
+            ? "No - ${statapprovalController.text}"
+            : (statapproval == "Yes"
+                ? "Yes - ${selectedstatapproval ?? ''}"
+                : ""),
+        "SOILINV": soilsurvey == "No"
+            ? "No - ${soilsurveyController.text}"
+            : (soilsurvey == "Yes" ? "Yes - ${selectedsoilsurvey ?? ''}" : ""),
+        "BARRICATION": barrication == "No"
+            ? "No - ${barricationController.text}"
+            : (barrication == "Yes"
+                ? "Yes - ${selectedbarrication ?? ''}"
+                : ""),
+        "TREECUTTINGDEM": treecutting == "No"
+            ? "No - ${treecuttingController.text}"
+            : (treecutting == "Yes"
+                ? "Yes - ${selectedtreecutting ?? ''}"
+                : ""),
+        "LABOURACCOM": labouracc == "No"
+            ? "No - ${labouraccController.text}"
+            : (labouracc == "Yes" ? "Yes - ${selectedlabouracc ?? ''}" : ""),
+        "BRICKWORK": brickwork == "No"
+            ? "No - ${brickworkController.text}"
+            : (brickwork == "Yes" ? "Yes - ${selectedbrickwork ?? ''}" : ""),
+        "SITESECURITY": sitesec == "No"
+            ? "No - ${sitesecController.text}"
+            : (sitesec == "Yes" ? "Yes - ${selectedsitesec ?? ''}" : ""),
+        "LIGHTINGARR": lightarr == "No"
+            ? "No - ${lightarrController.text}"
+            : (lightarr == "Yes" ? "Yes - ${selectedlightarr ?? ''}" : ""),
+        "FORCEMAJEURECON": forcemaj,
+        "ARBITRATIONCLAUSE": arbitration,
+        "LABCOMINS": labourcomp,
+        "LIQUIDATEDDAMAGES": liqdamage,
+        "STABILITYCERTCLAUSE": stability,
+        "GROUTTEEMAXAPP": grout,
+        "EXJOINTREQ": jointreq == "No"
+            ? "No - ${jointreqController.text}"
+            : (jointreq == "Yes" ? "Yes - ${selectedjointreq ?? ''}" : ""),
+        "IDLECHARGES": idlecharg,
+        "THIRDPARTYTESTS": thirdpartytest,
+        "ADDUSER": empCode,
+        "FILES": _buildFilesList(),
+        "REMOVEDFILES":
+            _removedFiles.isNotEmpty ? _removedFiles.join(",") : null,
+      };
+
+      // Remove any null values from requestBody
+      final cleanedRequestBody = Map.from(requestBody)
+        ..removeWhere(
+            (key, value) => value == null || value.toString().isEmpty);
+
+      // Use the unified SaveSalesChecklist endpoint
+      final apiEndpoint = 'SaveSalesChecklist';
+
+      print("API URL : ${ApiUtils.getUri(apiEndpoint)}");
+      print("REQUEST BODY : ${jsonEncode(cleanedRequestBody)}");
+
+      final response = await http.post(
+        ApiUtils.getUri(apiEndpoint),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: jsonEncode(cleanedRequestBody),
+      );
+
+      print("STATUS CODE : ${response.statusCode}");
+      print("RESPONSE BODY : ${response.body}");
+
+      // Check if response is valid JSON
+      if (response.body.trim().startsWith('<!DOCTYPE') ||
+          response.body.trim().startsWith('<html')) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Server error occurred. Please try again later.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      final data = jsonDecode(response.body);
+
+      if (data['Success'] == true) {
+        print("${isEditing ? 'UPDATE' : 'INSERT'} SUCCESS");
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(data['Message']),
+            backgroundColor: Colors.green,
+          ),
+        );
+        // ✅ Clear local states
+        _removedFiles.clear();
+        _attachedFiles.clear();
+
+        // ✅ Refresh the data by calling the callback or reloading from API
+        if (widget.onDataSaved != null) {
+          widget.onDataSaved!();
+        }
+
+        // ✅ For edit mode, update the local checklistData with new file list
+        if (isEditing && widget.checklistData != null) {
+          await _refreshChecklistData(widget.checklistData!.chklno);
+        }
+        if (!isEditing) {
+          clearAllFields();
+        }
+        Navigator.pop(context, true); // Return true to indicate data was saved
+      } else {
+        print("${isEditing ? 'UPDATE' : 'INSERT'} FAILED");
+        print("ERROR MESSAGE : ${data['Message']}");
+
+        String errorMessage = "";
+
+        if (data['Message'] is List) {
+          errorMessage = (data['Message'] as List).join("\n");
+        } else {
+          errorMessage = data['Message'].toString();
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e, stackTrace) {
+      print("EXCEPTION ERROR : $e");
+      print("STACK TRACE : $stackTrace");
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString()),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+Future<void> _refreshChecklistData(int? chklno) async {
+  if (chklno == null) return; // Guard clause
+
+  try {
+    final response = await http.post(
+      ApiUtils.getUri('GetSalesChecklist'),
+      body: jsonEncode({"CHKLNO": chklno}),
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      if (data['Success'] == true) {
+        final updatedData = SalesChecklistModel.fromJson(data['Data']);
+
+        // Update the existing checklistData reference
+        widget.checklistData?.chkfname = updatedData.chkfname;
+        widget.checklistData?.chkftype = updatedData.chkftype;
+        widget.checklistData?.chkfcount = updatedData.chkfcount;
+
+        // Update local _existingFiles
+        if (updatedData.chkfname != null &&
+            updatedData.chkfname!.isNotEmpty) {
+          _existingFiles =
+              updatedData.chkfname!.split(',').map((e) => e.trim()).toList();
+        } else {
+          _existingFiles = [];
+        }
+
+        setState(() {});
+      }
+    }
+  } catch (e) {
+    debugPrint("Error refreshing checklist data: $e");
+  }
+}*/

@@ -29,6 +29,8 @@ import 'package:universal_html/html.dart' as html;
 import 'package:path/path.dart' as path;
 import 'package:pdf/widgets.dart' as pw;
 
+import '../../widgets/filedownloadservice.dart';
+
 class ProjectcontrolEntryScreen extends StatefulWidget {
   final bool isSuperAdmin;
   final bool? isReadOnly;
@@ -252,11 +254,14 @@ class _ProjectcontrolEntryScreenState extends State<ProjectcontrolEntryScreen> {
                 await _generatePCEntriesPDF(pdfEntry);
 
                 // ✅ Also download the actual attached files
-                await PCDownloadService.downloadPCFiles(
+                await AttachmentDownloadService.downloadFiles(
                   context: context,
-                  spcNo: pdfEntry.SPCNO ?? 0,
-                  salesFiles: pdfEntry.SFNAME, // Sales files
-                  designFiles: pdfEntry.PCFNAME, // Design files
+                  config: DownloadConfigs.projectControl,
+                  recordId: pdfEntry.SPCNO ?? 0,
+                  providedFiles: {
+                    'SDFNAME': pdfEntry.SFNAME,
+                    'DDFNAME': pdfEntry.PCFNAME,
+                  },
                 );
               },
             ),
@@ -1723,6 +1728,7 @@ class _ProjectcontrolEntryScreenState extends State<ProjectcontrolEntryScreen> {
     String projectName = '';
 
     if (entry.CUSID != null) {
+      await loadProjects(entry.CUSID!);
       final matchedCustomer = customerList.firstWhere(
         (c) => c.customerId == entry.CUSID,
         orElse: () {
@@ -2113,291 +2119,4 @@ Future<io.File> _saveToFile(String name, List<int> bytes) async {
   final tempDir = await getTemporaryDirectory();
   final file = io.File('${tempDir.path}/$name');
   return await file.writeAsBytes(bytes);
-}
-
-class PCDownloadService {
-  static Future<Map<String, dynamic>?> _getPCFiles({
-    required int spcNo,
-  }) async {
-    try {
-      final response = await http.post(
-        ApiUtils.getUri('GetPROJCTRLFiles'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({"SPCNO": spcNo}),
-      );
-
-      print('GetDesigningFiles Response: ${response.body}');
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['Success'] == true) {
-          return data['Data'];
-        }
-      }
-      return null;
-    } catch (e) {
-      print('Error fetching files: $e');
-      return null;
-    }
-  }
-
-  static Future<void> downloadPCFiles({
-    required BuildContext context,
-    required int spcNo,
-    String? salesFiles,
-    String? designFiles,
-  }) async {
-    // Get Sales files
-    List<String> salesFileList = [];
-    if (salesFiles != null && salesFiles.trim().isNotEmpty) {
-      salesFileList = salesFiles.split(',').map((e) => e.trim()).toList();
-    }
-
-    // Get Design files
-    List<String> designFileList = [];
-    if (designFiles != null && designFiles.trim().isNotEmpty) {
-      designFileList = designFiles.split(',').map((e) => e.trim()).toList();
-    }
-
-    // If no files provided, try to fetch from API
-    if (salesFileList.isEmpty && designFileList.isEmpty) {
-      final filesData = await _getPCFiles(spcNo: spcNo);
-
-      if (filesData == null) {
-        _showNoFilesDialog(context, spcNo);
-        return;
-      }
-
-      // Get Sales files
-      if (filesData['SDFNAME'] != null) {
-        salesFileList = filesData['SDFNAME']
-            .toString()
-            .split(',')
-            .map((e) => e.trim())
-            .toList();
-      }
-
-      // Get Design files
-      if (filesData['DDFNAME'] != null) {
-        designFileList = filesData['DDFNAME']
-            .toString()
-            .split(',')
-            .map((e) => e.trim())
-            .toList();
-      }
-
-      if (salesFileList.isEmpty && designFileList.isEmpty) {
-        _showNoFilesDialog(context, spcNo);
-        return;
-      }
-    }
-
-    // Combine all files for download
-    final allFiles = [...salesFileList, ...designFileList];
-
-    // Request storage permission for Android
-    if (Platform.isAndroid) {
-      final status = await Permission.storage.request();
-      if (!status.isGranted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Storage permission denied'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
-      }
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Downloading ${allFiles.length} file(s)...'),
-        backgroundColor: Colors.blue,
-        duration: const Duration(seconds: 2),
-      ),
-    );
-
-    final List<String> success = [];
-    final List<String> failed = [];
-
-    for (final fileName in allFiles) {
-      try {
-        await _downloadFile(fileName, spcNo);
-        success.add(fileName);
-        print('✓ Downloaded: $fileName');
-      } catch (e) {
-        failed.add(fileName);
-        print('✗ Failed: $fileName - $e');
-      }
-    }
-
-    _showDownloadResult(context, success, failed);
-  }
-
-  static Future<void> _downloadFile(String fileName, int sdNo) async {
-    try {
-      print('Original filename from DB: "$fileName"');
-
-      final response = await http.post(
-        ApiUtils.getUri('DownloadPCFile'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({"fileName": fileName}),
-      );
-
-      print('Download API Request: fileName = "$fileName"');
-      print('Download API Response Status: ${response.statusCode}');
-      print('Download API Response Body: ${response.body}');
-
-      final data = jsonDecode(response.body);
-
-      if (data['Success'] == true) {
-        String base64String = data['FileBytes'];
-        Uint8List fileBytes = base64Decode(base64String);
-
-        String savePath = await _getSavePath(fileName);
-        File file = File(savePath);
-        await file.writeAsBytes(fileBytes);
-
-        print('File saved to: $savePath');
-      } else {
-        throw Exception(data['Message'] ?? 'Download failed');
-      }
-    } catch (e) {
-      throw Exception('Failed to download $fileName: $e');
-    }
-  }
-
-  static Future<String> _getSavePath(String fileName) async {
-    if (Platform.isAndroid) {
-      final directory = Directory('/storage/emulated/0/Download');
-      if (!await directory.exists()) {
-        await directory.create(recursive: true);
-      }
-      return '${directory.path}/$fileName';
-    } else if (Platform.isIOS) {
-      final directory = await getApplicationDocumentsDirectory();
-      return '${directory.path}/$fileName';
-    } else if (Platform.isWindows) {
-      final downloadsPath = '${Platform.environment['USERPROFILE']}\\Downloads';
-      final directory = Directory(downloadsPath);
-      if (!await directory.exists()) {
-        await directory.create(recursive: true);
-      }
-      return '$downloadsPath\\$fileName';
-    } else if (Platform.isMacOS) {
-      final downloadsPath = '${Platform.environment['HOME']}/Downloads';
-      final directory = Directory(downloadsPath);
-      if (!await directory.exists()) {
-        await directory.create(recursive: true);
-      }
-      return '$downloadsPath/$fileName';
-    } else {
-      final directory = Directory('./downloads');
-      if (!await directory.exists()) {
-        await directory.create(recursive: true);
-      }
-      return '${directory.path}/$fileName';
-    }
-  }
-
-  static void _showNoFilesDialog(BuildContext context, int sdNo) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.info_outline, color: Colors.orange),
-            SizedBox(width: 8),
-            Text('No Attachments'),
-          ],
-        ),
-        content: Text(
-          'Billing #$sdNo has no attached files.\n\n'
-          'To add files, edit the billing entry and upload attachments.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  static void _showDownloadResult(
-    BuildContext context,
-    List<String> success,
-    List<String> failed,
-  ) {
-    if (success.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('❌ No files were downloaded'),
-          backgroundColor: Colors.red,
-          duration: Duration(seconds: 3),
-        ),
-      );
-    } else if (failed.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('✅ ${success.length} file(s) downloaded successfully'),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 5),
-          action: SnackBarAction(
-            label: 'OPEN FOLDER',
-            onPressed: () async {
-              String folderPath;
-              if (Platform.isWindows) {
-                folderPath =
-                    '${Platform.environment['USERPROFILE']}\\Downloads';
-              } else if (Platform.isAndroid) {
-                folderPath = '/storage/emulated/0/Download';
-              } else if (Platform.isIOS) {
-                final directory = await getApplicationDocumentsDirectory();
-                folderPath = directory.path;
-              } else if (Platform.isMacOS) {
-                folderPath = '${Platform.environment['HOME']}/Downloads';
-              } else {
-                folderPath = './downloads';
-              }
-
-              await OpenFile.open(folderPath);
-            },
-          ),
-        ),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '⚠️ ${success.length} downloaded, ${failed.length} failed: ${failed.join(", ")}',
-          ),
-          backgroundColor: Colors.orange,
-          duration: const Duration(seconds: 5),
-        ),
-      );
-    }
-  }
-}
-
-String formatIndianNumber(num value) {
-  final isNegative = value < 0;
-  final intVal = value.abs().round();
-  final str = intVal.toString();
-
-  String formatted;
-  if (str.length <= 3) {
-    formatted = str;
-  } else {
-    final lastThree = str.substring(str.length - 3);
-    final rest = str.substring(0, str.length - 3);
-    final restFormatted = rest.replaceAllMapped(
-      RegExp(r'(\d)(?=(\d{2})+$)'),
-      (match) => '${match.group(1)},',
-    );
-    formatted = '$restFormatted,$lastThree';
-  }
-
-  return isNegative ? '-$formatted' : formatted;
 }
