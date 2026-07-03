@@ -143,6 +143,8 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
   bool _showDownloadButton = true;
   SalesBillingSummaryModel? _billingSummary;
   bool _isLoadingStages = false;
+  final Set<String> _dirtyRowKeys = {};
+  bool _isInitialLoadInProgress = false;
 
   @override
   void initState() {
@@ -1086,17 +1088,17 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
           hide: true),
       PlutoColumn(
           title: 'FileName',
-          field: 'col25FileName',
+          field: 'col26FileName',
           type: PlutoColumnType.text(),
           hide: true),
       PlutoColumn(
           title: 'FileBase64',
-          field: 'col25Base64',
+          field: 'col26Base64',
           type: PlutoColumnType.text(),
           hide: true),
       PlutoColumn(
           title: 'FileType',
-          field: 'col25FileType',
+          field: 'col26FileType',
           type: PlutoColumnType.text(),
           hide: true),
     ]);
@@ -1248,6 +1250,9 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
   void _onGridChanged(PlutoGridOnChangedEvent event) {
     final row = event.row;
     _calculateRowTotals(row);
+    if (!_isInitialLoadInProgress) {
+      _dirtyRowKeys.add(row.key.toString());
+    }
     setState(() {});
   }
 
@@ -1712,8 +1717,12 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
         }
       }
 
-      // ── UPDATE existing rows ───────────────────────────────────────────
-      for (final row in existingRows) {
+      // ── UPDATE only rows the user actually changed ─────────────────────
+      final rowsToUpdate = existingRows
+          .where((row) => _dirtyRowKeys.contains(row.key.toString()))
+          .toList();
+
+      for (final row in rowsToUpdate) {
         final payload = _buildPayloadFromRow(row, isUpdate: true);
         final result = await saveSalesBilling(payload);
 
@@ -1723,6 +1732,11 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
           failCount++;
           failMessages.add(result['Message']?.toString() ?? 'Unknown error');
         }
+      }
+
+      // ── Clear dirty tracking after a successful submit ──────────────────
+      if (failCount == 0) {
+        _dirtyRowKeys.clear();
       }
 
       if (!mounted) return;
@@ -1764,37 +1778,6 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
           backgroundColor: Colors.red,
         ),
       );
-    }
-  }
-
-  Future<Map<String, dynamic>> saveSalesBilling(
-      Map<String, dynamic> requestBody) async {
-    try {
-      final response = await http.post(
-        ApiUtils.getUri('SaveSalesBillinglist'),
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode(requestBody),
-      );
-
-      print('Status Code: ${response.statusCode}');
-      print('Response Body: ${response.body}');
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else {
-        return {
-          'Success': false,
-          'Message': 'Server Error: ${response.statusCode}'
-        };
-      }
-    } catch (e) {
-      print('Exception in saveSalesBilling: $e');
-      return {
-        'Success': false,
-        'Message': e.toString(),
-      };
     }
   }
 
@@ -1892,9 +1875,9 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
               ),
 
               // ── Hidden remark columns ──────────────────────────────────────
-              'col25FileName': PlutoCell(value: e.sbfname ?? ''),
-              'col25Base64': PlutoCell(value: ''),
-              'col25FileType': PlutoCell(value: e.sbftype ?? ''),
+              'col26FileName': PlutoCell(value: e.sbfname ?? ''),
+              'col26Base64': PlutoCell(value: ''),
+              'col26FileType': PlutoCell(value: e.sbftype ?? ''),
               'colSBNO': PlutoCell(value: e.sbno ?? 0),
               'col6Remark': PlutoCell(value: e.secadvremks ?? ''),
               'col7Remark': PlutoCell(value: e.mobadvremks ?? ''),
@@ -1921,12 +1904,14 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
             stateManager!.appendRows(loadedRows);
           }
 
-          // ── Recalculate all loaded rows ────────────────────────────────
+          // ── Recalculate all loaded rows (initial load — don't mark dirty) ──
+          _isInitialLoadInProgress = true;
           if (stateManager != null) {
             for (final row in stateManager!.rows) {
               _calculateRowTotals(row);
             }
           }
+          _isInitialLoadInProgress = false;
         }
       }
     } catch (e) {
@@ -1939,6 +1924,41 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
       );
     } finally {
       setState(() => _isLoadingBilling = false);
+    }
+  }
+
+  Future<Map<String, dynamic>> saveSalesBilling(
+      Map<String, dynamic> requestBody) async {
+    try {
+      // ✅ Debug: confirm FILES actually made it into the outgoing payload
+      debugPrint('📦 FILES in outgoing payload: ${requestBody['FILES']}');
+      debugPrint('📦 Full request body: ${jsonEncode(requestBody)}');
+
+      final response = await http.post(
+        ApiUtils.getUri('SaveSalesBillinglist'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(requestBody),
+      );
+
+      print('Status Code: ${response.statusCode}');
+      print('Response Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        return {
+          'Success': false,
+          'Message': 'Server Error: ${response.statusCode}'
+        };
+      }
+    } catch (e) {
+      print('Exception in saveSalesBilling: $e');
+      return {
+        'Success': false,
+        'Message': e.toString(),
+      };
     }
   }
 
@@ -2009,7 +2029,7 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
     final perWorkFormatted = perWork.endsWith('%') ? perWork : '$perWork%';
 
     // ── ATTACHMENT ────────────────────────────────────────────────────────
-    final base64Cell = row.cells['col25Base64']?.value?.toString().trim() ?? '';
+    final base64Cell = row.cells['col26Base64']?.value?.toString().trim() ?? '';
 
     List<Map<String, dynamic>> files = [];
 
@@ -2112,7 +2132,7 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
   Future<void> _pickAndAttachFile(PlutoRow row, String field) async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
-        allowMultiple: true, // ✅ multiple files
+        allowMultiple: true,
         type: FileType.custom,
         allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'dwg'],
       );
@@ -2128,12 +2148,6 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
         final bytes = await file.readAsBytes();
         final base64String = base64Encode(bytes);
 
-        print('=== File Picked ===');
-        print('File Name: $fileName');
-        print('File Size: ${bytes.length} bytes');
-        print('Base64 Length: ${base64String.length}');
-        print('===================');
-
         fileList.add({
           'FILENAME': fileName,
           'FILEDATA': base64String,
@@ -2141,25 +2155,32 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
         fileNames.add(fileName);
       }
 
-      // ✅ Store display name (comma separated) in visible cell
       final displayNames = fileNames.join(', ');
-      stateManager?.changeCellValue(
-        row.cells[field]!,
-        displayNames,
-        notify: true,
-      );
 
-      // ✅ Store JSON list in hidden cell for payload
+      // ✅ Visible cell — safe via changeCellValue (not readOnly typically blocks this if column IS readOnly)
+      if (row.cells[field] != null) {
+        stateManager?.changeCellValue(
+          row.cells[field]!,
+          displayNames,
+          notify: true,
+        );
+      } else {
+        debugPrint('⚠️ Visible cell "$field" not found on row!');
+      }
+
+      // ✅ Hidden cell — file name list
       if (row.cells['${field}FileName'] != null) {
         row.cells['${field}FileName']!.value = fileNames.join(',');
       }
-      if (row.cells['${field}Base64'] != null) {
-        // ✅ Store as JSON string — parse back when building payload
-        row.cells['${field}Base64']!.value = jsonEncode(fileList);
-      }
 
-      print('✅ Total files attached: ${fileList.length}');
-      print('✅ File names: $displayNames');
+      // ✅ Hidden cell — base64 JSON payload
+      if (row.cells['${field}Base64'] != null) {
+        row.cells['${field}Base64']!.value = jsonEncode(fileList);
+        _dirtyRowKeys.add(row.key.toString());
+        // ✅ Confirm it actually stuck
+        debugPrint(
+            '✅ Verifying stored value: ${row.cells['${field}Base64']!.value}');
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -2168,7 +2189,6 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
         ),
       );
     } catch (e) {
-      print('Error in _pickAndAttachFile: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error attaching file: $e'),
@@ -2990,15 +3010,6 @@ class BillingDownloadService {
     required int sbNo,
     String? sbfname,
   }) async {
-    // Show loading
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Getting file information...'),
-        backgroundColor: Colors.blue,
-        duration: Duration(seconds: 1),
-      ),
-    );
-
     // Get file names if not provided
     String? fileNamesString = sbfname;
 

@@ -2147,15 +2147,6 @@ class PCDownloadService {
     String? salesFiles,
     String? designFiles,
   }) async {
-    // Show loading
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Getting file information...'),
-        backgroundColor: Colors.blue,
-        duration: Duration(seconds: 1),
-      ),
-    );
-
     // Get Sales files
     List<String> salesFileList = [];
     if (salesFiles != null && salesFiles.trim().isNotEmpty) {
