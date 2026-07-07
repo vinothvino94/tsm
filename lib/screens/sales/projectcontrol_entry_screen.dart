@@ -473,8 +473,7 @@ class _ProjectcontrolEntryScreenState extends State<ProjectcontrolEntryScreen> {
                 child: _pcGridColumns.isEmpty
                     ? const Center(child: CircularProgressIndicator())
                     : PlutoGrid(
-                        key: ValueKey(
-                            'sales_grid_${_pcGridRows.length}_$_gridDataReady'),
+                        key: const ValueKey('pc_grid'),
                         columns: _pcGridColumns,
                         rows: _pcGridRows,
                         onLoaded: (event) {
@@ -1167,6 +1166,17 @@ class _ProjectcontrolEntryScreenState extends State<ProjectcontrolEntryScreen> {
       }
 
       if (_pcStateManager != null) {
+        // Commit the text being edited
+        FocusManager.instance.primaryFocus?.unfocus();
+
+        // Wait one frame so the TextField writes its value back to the cell
+        await Future.delayed(const Duration(milliseconds: 50));
+
+        _pcStateManager!.setEditing(false);
+
+        // Wait another frame for PlutoGrid to update the cell
+        await Future.delayed(const Duration(milliseconds: 50));
+
         _pcGridRows = _pcStateManager!.rows;
       }
 
@@ -1400,7 +1410,7 @@ class _ProjectcontrolEntryScreenState extends State<ProjectcontrolEntryScreen> {
         renderer: (ctx) => Align(
           alignment: Alignment.centerRight,
           child: Text(
-            ctx.cell.value == null || ctx.cell.value == 0
+            ctx.cell.value == null
                 ? ''
                 : formatIndianNumber((ctx.cell.value as num).toDouble()),
             style: TextStyle(
@@ -1440,7 +1450,7 @@ class _ProjectcontrolEntryScreenState extends State<ProjectcontrolEntryScreen> {
         renderer: (ctx) => Align(
           alignment: Alignment.centerRight,
           child: Text(
-            ctx.cell.value == null || ctx.cell.value == 0
+            ctx.cell.value == null
                 ? ''
                 : formatIndianNumber((ctx.cell.value as num).toDouble()),
             style: TextStyle(
@@ -1488,8 +1498,6 @@ class _ProjectcontrolEntryScreenState extends State<ProjectcontrolEntryScreen> {
   }
 
   void _addPCRow() {
-    print('_pcGridColumns length = ${_pcGridColumns.length}');
-    print('_pcStateManager = $_pcStateManager');
     if (_pcGridColumns.isEmpty || _pcStateManager == null) {
       debugPrint('Grid not ready yet');
       return;
@@ -1497,7 +1505,15 @@ class _ProjectcontrolEntryScreenState extends State<ProjectcontrolEntryScreen> {
 
     final nextSno = _pcStateManager!.rows.length + 1;
 
+    // ✅ Inherit SPCNO from existing rows already in the grid (if editing),
+    // so a newly added row joins the SAME record instead of becoming
+    // a brand-new SPCNO on submit.
+    final currentSpcno = _pcGridRows.isNotEmpty
+        ? ((_pcGridRows.first.cells['spcno']?.value as num?)?.toInt() ?? 0)
+        : (widget.pcData?.SPCNO ?? 0);
+
     final newRow = PlutoRow(cells: {
+      'spcno': PlutoCell(value: currentSpcno), // ✅ was missing entirely
       'sno': PlutoCell(value: nextSno),
       'description': PlutoCell(value: ''),
       'salesQty': PlutoCell(value: 0),
@@ -1506,7 +1522,7 @@ class _ProjectcontrolEntryScreenState extends State<ProjectcontrolEntryScreen> {
     });
 
     _pcStateManager!.appendRows([newRow]);
-    setState(() => _pcGridRows = _pcStateManager!.rows);
+    _pcGridRows = _pcStateManager!.rows; // ✅ no setState needed
   }
 
   Future<void> _fetchPcEntryData() async {
@@ -1621,6 +1637,8 @@ class _ProjectcontrolEntryScreenState extends State<ProjectcontrolEntryScreen> {
             if (_pcStateManager != null) {
               _pcStateManager!.removeAllRows();
               _pcStateManager!.appendRows(loadedRows);
+              _pcGridRows =
+                  _pcStateManager!.rows; // ✅ keep Dart-side list in sync
             }
           } else {
             // ✅ else — no loadedRows needed here, just clear everything
@@ -1634,6 +1652,7 @@ class _ProjectcontrolEntryScreenState extends State<ProjectcontrolEntryScreen> {
             });
             if (_pcStateManager != null) {
               _pcStateManager!.removeAllRows();
+              _pcGridRows = _pcStateManager!.rows; // ✅ same here
             }
           }
         } else {

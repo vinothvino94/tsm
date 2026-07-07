@@ -170,7 +170,6 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
               icon: const Icon(Icons.add),
               tooltip: 'Add Row',
               onPressed: () {
-                // Check if customer and project are selected
                 if (selectedCustomerId == null || selectedProjectId == null) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
@@ -181,7 +180,8 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
                   return;
                 }
                 _addSalesRow();
-                setState(() => _showDownloadButton = false);
+                setState(() => _showDownloadButton =
+                    false); // fine — unrelated to grid rebuild
               },
             ),
           if (_showDownloadButton)
@@ -476,8 +476,7 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
                 child: elementMasterList.isEmpty
                     ? const Center(child: CircularProgressIndicator())
                     : PlutoGrid(
-                        key: ValueKey(
-                            'sales_grid_${_salesGridRows.length}_$_gridDataReady'),
+                        key: const ValueKey('sales_grid'),
                         columns: _salesGridColumns,
                         rows: _salesGridRows,
                         onLoaded: (event) {
@@ -1184,8 +1183,29 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
         return;
       }
 
-      if (_salesStateManager != null) {
+      /*if (_salesStateManager != null) {
+        _salesStateManager!
+            .setEditing(false); // ✅ force-commit any cell still being edited
         _salesGridRows = _salesStateManager!.rows;
+      }*/
+      if (_salesStateManager != null) {
+        // Commit the text being edited
+        FocusManager.instance.primaryFocus?.unfocus();
+
+        // Wait one frame so the TextField writes its value back to the cell
+        await Future.delayed(const Duration(milliseconds: 50));
+
+        _salesStateManager!.setEditing(false);
+
+        // Wait another frame for PlutoGrid to update the cell
+        await Future.delayed(const Duration(milliseconds: 50));
+
+        _salesGridRows = _salesStateManager!.rows;
+      }
+      for (int i = 0; i < _salesGridRows.length; i++) {
+        debugPrint(
+            'Row $i -> elementName: ${_salesGridRows[i].cells['elementName']?.value}, '
+            'remarks: "${_salesGridRows[i].cells['remarks']?.value}"');
       }
 
       if (_salesGridRows.isEmpty) {
@@ -1455,7 +1475,7 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
         renderer: (ctx) => Align(
           alignment: Alignment.centerRight,
           child: Text(
-            ctx.cell.value == null || ctx.cell.value == 0
+            ctx.cell.value == null
                 ? ''
                 : formatIndianNumber((ctx.cell.value as num).toDouble()),
             style: TextStyle(
@@ -1495,7 +1515,7 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
         renderer: (ctx) => Align(
           alignment: Alignment.centerRight,
           child: Text(
-            ctx.cell.value == null || ctx.cell.value == 0
+            ctx.cell.value == null
                 ? ''
                 : formatIndianNumber((ctx.cell.value as num).toDouble()),
             style: TextStyle(
@@ -1557,7 +1577,16 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
         ? (elementMasterList.first.eleUnit ?? '')
         : '';
 
+    // ✅ Inherit SDNO from existing rows already in the grid (if editing),
+    // so a newly added row joins the SAME record instead of becoming
+    // a brand-new SDNO on submit.
+    final currentSdno = _salesGridRows.isNotEmpty
+        ? ((_salesGridRows.first.cells['sdno']?.value as num?)?.toInt() ?? 0)
+        : (widget.designData?.sdno ?? 0);
+
     final newRow = PlutoRow(cells: {
+      'sdno': PlutoCell(
+          value: currentSdno), // ✅ was missing before — defaulted to null → 0
       'sno': PlutoCell(value: nextSno),
       'elementName': PlutoCell(value: defaultName),
       'unit': PlutoCell(value: defaultUnit),
@@ -1567,7 +1596,7 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
     });
 
     _salesStateManager!.appendRows([newRow]);
-    setState(() => _salesGridRows = _salesStateManager!.rows);
+    _salesGridRows = _salesStateManager!.rows;
   }
 
   Future<void> _fetchDesignEntryData() async {
@@ -1684,6 +1713,8 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
             if (_salesStateManager != null) {
               _salesStateManager!.removeAllRows();
               _salesStateManager!.appendRows(loadedRows);
+              _salesGridRows =
+                  _salesStateManager!.rows; // ✅ keep Dart-side list in sync
             }
           } else {
             // ✅ else — no loadedRows needed here, just clear everything
