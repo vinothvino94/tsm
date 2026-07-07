@@ -206,6 +206,29 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
                 setState(() => _showDownloadButton = false);
               },
             ),
+          if (!isViewOnly)
+            IconButton(
+              icon: const Icon(Icons.delete_outline),
+              tooltip: 'Delete Row',
+              onPressed: () {
+                if (stateManager == null ||
+                    stateManager!.currentRowIdx == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please select a row to delete.'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                  return;
+                }
+
+                final rowIdx = stateManager!.currentRowIdx!;
+                final row = stateManager!.refRows[rowIdx];
+
+                stateManager!.removeRows([row]);
+                deleteRow(rowIdx);
+              },
+            ),
           if (_showDownloadButton)
             IconButton(
               icon: const Icon(Icons.download),
@@ -625,7 +648,7 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
 
             // ── After PlutoGrid widget ─────────────────────────────────────────────────
             const SizedBox(height: 16),
-            if (rows.isNotEmpty)
+            if (!isViewOnly && rows.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 child: Container(
@@ -1391,8 +1414,9 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
 
   void deleteRow(int rowIndex) {
     setState(() {
-      if (rows.isNotEmpty) {
-        rows.removeAt(rowIndex);
+      if (stateManager != null) {
+        rows = stateManager!
+            .rows; // ← sync local state from grid, not manual removeAt
       }
     });
   }

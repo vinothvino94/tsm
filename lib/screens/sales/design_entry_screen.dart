@@ -601,51 +601,52 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
               const SizedBox(height: 16),
 
               ///Submit/Update Button
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [AppColors.primary, AppColors.primaryDark],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(10),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black26,
-                            blurRadius: 5,
-                            offset: const Offset(2, 4),
+              if (!isViewOnly)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [AppColors.primary, AppColors.primaryDark],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
                           ),
-                        ],
-                      ),
-                      child: InkWell(
-                        onTap: () {
-                          if (_formKey.currentState!.validate()) {
-                            _submitForm();
-                          }
-                        },
-                        borderRadius: BorderRadius.circular(10),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 15),
-                          child: Center(
-                            child: Text(
-                              isEditMode ? 'Update' : 'Submit',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
+                          borderRadius: BorderRadius.circular(10),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black26,
+                              blurRadius: 5,
+                              offset: const Offset(2, 4),
+                            ),
+                          ],
+                        ),
+                        child: InkWell(
+                          onTap: () {
+                            if (_formKey.currentState!.validate()) {
+                              _submitForm();
+                            }
+                          },
+                          borderRadius: BorderRadius.circular(10),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 15),
+                            child: Center(
+                              child: Text(
+                                isEditMode ? 'Update' : 'Submit',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
                               ),
                             ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
             ],
           ),
         ),
@@ -1447,8 +1448,8 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
         title: 'Sales Qnty',
         field: 'totalQty',
         type: PlutoColumnType.number(format: '#,###'),
-        readOnly: false,
-        enableEditingMode: true,
+        readOnly: widget.isReadOnly == true, // ← was: false
+        enableEditingMode: !(widget.isReadOnly == true), // ← was: true
         width: 130,
         backgroundColor: const Color(0xFFF1F5F9),
         renderer: (ctx) => Align(
@@ -1487,8 +1488,8 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
         title: 'Design Qnty',
         field: 'designTotal',
         type: PlutoColumnType.number(format: '#,###'),
-        readOnly: false,
-        enableEditingMode: true,
+        readOnly: widget.isReadOnly == true, // ← was: false
+        enableEditingMode: !(widget.isReadOnly == true), // ← was: true
         width: 130,
         backgroundColor: const Color(0xFFF1F5F9),
         renderer: (ctx) => Align(

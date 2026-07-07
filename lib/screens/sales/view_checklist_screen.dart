@@ -860,8 +860,7 @@ class _ViewChecklistScreenState extends State<ViewChecklistScreen> {
               Text('Approve Checklist'),
             ],
           ),
-          content: Text(
-              'Are you sure you want to approve Checklist #$chklNo?\n\nThis action cannot be undone.'),
+          content: Text('Are you sure you want to approve Checklist #$chklNo?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
@@ -1261,7 +1260,7 @@ class QuotationAgreementPdfService {
           pw.SizedBox(height: 6),*/
           _infoRow('Client Name:', clientName),
           pw.SizedBox(height: 6),
-          _infoRow('Project Name:', projectName),
+          _infoRow('Enquiry Name:', projectName),
           pw.SizedBox(height: 6),
           _infoRow('Verified By (EC No):', verifiedBy),
           pw.SizedBox(height: 6),
