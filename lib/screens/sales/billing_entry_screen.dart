@@ -1568,8 +1568,8 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
             uri,
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
-              'CUSID': customerId,
-              'PROJID': projectId,
+              'CLIENTNAME': customerId.toString(),
+              'PROJIDNAME': projectId.toString(),
             }),
           )
           .timeout(const Duration(seconds: 30));

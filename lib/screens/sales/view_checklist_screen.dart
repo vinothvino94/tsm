@@ -587,7 +587,7 @@ class _ViewChecklistScreenState extends State<ViewChecklistScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Client : ${firstEntry.clientname ?? '-'}',
+                      'Client Name : ${firstEntry.clientname ?? '-'}',
                       style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w500,
@@ -599,7 +599,7 @@ class _ViewChecklistScreenState extends State<ViewChecklistScreen> {
 
               const SizedBox(height: 10),
 
-              /// Project Name
+              /// Enquiry Name
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -611,7 +611,7 @@ class _ViewChecklistScreenState extends State<ViewChecklistScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Project : ${firstEntry.enqidname ?? '-'}',
+                      'Enquiry Name : ${firstEntry.enqidname ?? '-'}',
                       style: const TextStyle(
                         fontSize: 14,
                       ),

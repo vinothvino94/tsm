@@ -644,6 +644,7 @@ class SalesChecklistModel {
 
   int? deluser;
   DateTime? deldate;
+  String? PROJIDNAME;
 
   SalesChecklistModel({
     this.chklno,
@@ -708,6 +709,7 @@ class SalesChecklistModel {
     this.editdate,
     this.deluser,
     this.deldate,
+    this.PROJIDNAME,
   });
 
   factory SalesChecklistModel.fromJson(Map<String, dynamic> json) {
@@ -781,6 +783,7 @@ class SalesChecklistModel {
           json['EDITDATE'] != null ? DateTime.parse(json['EDITDATE']) : null,
       deluser: json['DELUSER'],
       deldate: json['DELDATE'] != null ? DateTime.parse(json['DELDATE']) : null,
+      PROJIDNAME: json['PROJIDNAME'],
     );
   }
 
@@ -848,6 +851,7 @@ class SalesChecklistModel {
       "EDITDATE": editdate?.toIso8601String(),
       "DELUSER": deluser,
       "DELDATE": deldate?.toIso8601String(),
+      "PROJIDNAME": PROJIDNAME,
     };
   }
 }
