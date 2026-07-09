@@ -312,13 +312,37 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
-  Future<void> _fetchTeamMemberCount(int empCode) async {
+  Future<void> fetchTeamMemberCount(int empCode) async {
     try {
       final uri = ApiUtils.getUri('EmployeeListByTeamLead');
       final response = await http.post(
         uri,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'HRIACCNO': isSuperAdmin ? "0" : empCode.toString()}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['Success'] == true && data['EmployeeList'] is List) {
+          setState(() {
+            teamMemberCount = data['EmployeeList'].length;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetching team member count: $e');
+    }
+  }
+
+  Future<void> _fetchTeamMemberCount(int empCode) async {
+    try {
+      final uri = ApiUtils.getUri('EmployeeListByTeamLead');
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'HRIACCNO': empCode.toString()
+        }), // ✅ always own empCode, no "0" special-case
       );
 
       if (response.statusCode == 200) {
@@ -1348,33 +1372,7 @@ class _HomeScreenState extends State<HomeScreen>
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: roleColor),
                       ),
-                      child: /*Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(roleIcon, color: roleColor, size: 16),
-                        const SizedBox(width: 6),
-                        Text(
-                          userRole,
-                          style: TextStyle(
-                            color: roleColor,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        if ((isTeamLead || isSuperAdmin) &&
-                            teamMemberCount > 0) ...[
-                          const SizedBox(width: 8),
-                          Text(
-                            '• $teamMemberCount members',
-                            style: TextStyle(
-                              color: roleColor.withOpacity(0.8),
-                              fontSize: 11,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),*/
-                          Row(
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(roleIcon, color: roleColor, size: 16),

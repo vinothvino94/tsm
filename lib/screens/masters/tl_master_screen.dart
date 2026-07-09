@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../../api/api_utils.dart';
 import '../../colors/app_colors.dart';
+import '../../services/prefrence_helper.dart';
 
 class TlMasterScreen extends StatefulWidget {
   final int empCode;
@@ -26,16 +28,27 @@ class _TlMasterScreenState extends State<TlMasterScreen> {
   String? _selectedTeamLead = "0";
   bool _isLoading = false;
   final TextEditingController _searchController = TextEditingController();
+  String? _hriIfscCode;
+  int? _empSect;
 
   @override
   void initState() {
     super.initState();
-    _loadEmployees();
+    _loadUserDept().then((_) => _loadEmployees());
+  }
+
+  Future<void> _loadUserDept() async {
+    _hriIfscCode = await PreferencesHelper().getEmpDept();
+    _empSect = await PreferencesHelper().getEmpSect(); // ✅ NEW
+    debugPrint('✅ hriIfscCode from prefs: $_hriIfscCode');
+    debugPrint('✅ empSect from prefs: $_empSect'); // ✅ NEW
   }
 
   /// ✅ Fetch Employee List and Extract Unique Team Leads
   Future<void> _loadEmployees() async {
     setState(() => _isLoading = true);
+    debugPrint(
+        '🔍 _loadEmployees called — _empSect: $_empSect, isSuperAdmin: ${widget.isSuperAdmin}'); // ✅ ADD
     try {
       final uri = ApiUtils.getUri('EmployeeListByTeamLead');
       final response = await http.post(
@@ -57,18 +70,26 @@ class _TlMasterScreenState extends State<TlMasterScreen> {
             _teamLeaders = uniqueTLs;
 
             if (widget.isTeamLead && !widget.isSuperAdmin) {
-              // Team Lead: Only show their own team members
               _filteredEmployees = employees
                   .where((e) =>
                       e['HRIACCNO']?.toString() == widget.empCode.toString())
                   .toList();
               _selectedTeamLead = widget.empCode.toString();
             } else if (widget.isSuperAdmin) {
-              // Super Admin: Show all employees initially
-              _filteredEmployees = employees;
-              _selectedTeamLead = "0"; // "All Team Leads"
+              if (_empSect == 5) {
+                // ✅ Show all employees EXCEPT those under TL 15000
+                _filteredEmployees = employees
+                    .where((e) => e['HRIACCNO']?.toString() != '15000')
+                    .toList();
+                _selectedTeamLead = "0"; // "All Team Leads"
+              } else {
+                // ✅ EMPSECT != 5 → show ONLY employees under 15000
+                _filteredEmployees = employees
+                    .where((e) => e['HRIACCNO']?.toString() == '15000')
+                    .toList();
+                _selectedTeamLead = '15000';
+              }
             } else {
-              // Regular employee (shouldn't reach here, but fallback)
               _filteredEmployees = [];
             }
           });
@@ -728,30 +749,35 @@ class _TlMasterScreenState extends State<TlMasterScreen> {
     List<DropdownMenuItem<String>> items = [];
 
     if (widget.isSuperAdmin) {
-      // Super Admin → Can see ALL TLs and "All Team Leads"
       items.add(
         const DropdownMenuItem(value: "0", child: Text("All Team Leads")),
       );
 
-      // Sort team leaders by employee code
-      final sortedTeamLeaders = List<Map<String, dynamic>>.from(_teamLeaders)
-        ..sort((a, b) {
-          final aCode = int.tryParse(a['HRIACCNO']?.toString() ?? '0') ?? 0;
-          final bCode = int.tryParse(b['HRIACCNO']?.toString() ?? '0') ?? 0;
-          return aCode.compareTo(bCode);
-        });
+      if (_empSect == 5) {
+        final sortedTeamLeaders = List<Map<String, dynamic>>.from(_teamLeaders)
+          ..sort((a, b) {
+            final aCode = int.tryParse(a['HRIACCNO']?.toString() ?? '0') ?? 0;
+            final bCode = int.tryParse(b['HRIACCNO']?.toString() ?? '0') ?? 0;
+            return aCode.compareTo(bCode);
+          });
 
-      for (final tl in sortedTeamLeaders) {
-        final code = tl['HRIACCNO']?.toString() ?? '';
-        if (code.isNotEmpty && code != "0") {
-          final name = await getEmployeeNameWithCode(code);
-          items.add(
-            DropdownMenuItem(value: code, child: Text(name)),
-          );
+        for (final tl in sortedTeamLeaders) {
+          final code = tl['HRIACCNO']?.toString() ?? '';
+          if (code.isNotEmpty && code != "0" && code != "15000") {
+            // ✅ exclude 15000
+            final name = await getEmployeeNameWithCode(code);
+            items.add(
+              DropdownMenuItem(value: code, child: Text(name)),
+            );
+          }
         }
+      } else {
+        final name = await getEmployeeNameWithCode('15000');
+        items.add(
+          DropdownMenuItem(value: '15000', child: Text(name)),
+        );
       }
     } else if (widget.isTeamLead) {
-      // Team Lead → Only themselves (read-only)
       final name = await getEmployeeNameWithCode(widget.empCode.toString());
       items.add(
         DropdownMenuItem(

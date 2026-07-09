@@ -479,12 +479,22 @@ class _LoginScreenState extends State<LoginScreen> {
             final empDept = data['HRIIFSCCODE'].toString();
             final empTL = data['HRIACCNO'].toString();
             final sales = data['HRIAMOUNT'].toString();
-
+            final empSect =
+                int.tryParse(data['EMPSECT']?.toString() ?? '0') ?? 0;
             final hasSalesAccess = double.tryParse(sales) == 555.0;
             debugPrint('Sales access: $hasSalesAccess (HRIAMOUNT: $sales)');
 
-            await PreferencesHelper().saveUserDetails(empName, empCode, empSite,
-                empBran, empDept, empTL, sales, hasSalesAccess);
+            await PreferencesHelper().saveUserDetails(
+              empName,
+              empCode,
+              empSite,
+              empBran,
+              empDept,
+              empTL,
+              sales,
+              hasSalesAccess,
+              empSect,
+            );
             debugPrint('User details saved to preferences');
 
             debugPrint('Login successful, proceeding to home screen');

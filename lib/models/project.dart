@@ -1460,23 +1460,6 @@ class SalesDesignModel {
   }
 }
 
-class DesignFileUploadModel {
-  String? filename;
-  String? filedata;
-
-  DesignFileUploadModel({
-    this.filename,
-    this.filedata,
-  });
-
-  Map<String, dynamic> toJson() {
-    return {
-      'FILENAME': filename,
-      'FILEDATA': filedata,
-    };
-  }
-}
-
 class SalesEntryModel {
   String elementName;
   String unit;
@@ -1676,47 +1659,6 @@ class PCEntryModel {
     this.sfname,
     this.sftype,
   });
-}
-
-class SecureAdvanceEntry {
-  final double amount;
-  final String remarks;
-  const SecureAdvanceEntry({required this.amount, required this.remarks});
-}
-
-class NetAmountRecd {
-  final double amount;
-  final String remarks;
-  final String date; // stored as formatted string e.g. "2024-06-24"
-  final double? outstanding;
-
-  const NetAmountRecd(
-      {required this.amount,
-      required this.remarks,
-      required this.date,
-      this.outstanding});
-}
-
-class BillingData {
-  final int? id;
-  final int customerId;
-  final int projectId;
-  final Map<String, String> rowData;
-
-  BillingData({
-    this.id,
-    required this.customerId,
-    required this.projectId,
-    required this.rowData,
-  });
-
-  Map<String, dynamic> toJson() {
-    return {
-      'customerId': customerId,
-      'projectId': projectId,
-      'rowData': rowData,
-    };
-  }
 }
 
 class SalesDesignSummaryModel {

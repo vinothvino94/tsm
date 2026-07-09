@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class PreferencesHelper {
@@ -10,6 +11,7 @@ class PreferencesHelper {
     String empTL,
     String sales,
     bool hasSalesAccess,
+    int empSect,
   ) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('empName', empName);
@@ -17,9 +19,11 @@ class PreferencesHelper {
     await prefs.setInt('empSite', empSite); // ✅ Corrected key
     await prefs.setInt('empBran', empBran); // ✅ Corrected key
     await prefs.setString('hriIfscCode', empDept); // ✅ Corrected key
+    debugPrint('✅ Saved hriIfscCode: $empDept');
     await prefs.setString('hriAccNo', empTL); // ✅ Corrected key
     await prefs.setString('hriAmount', sales); // ✅ Corrected key
     await prefs.setBool('hasSalesAccess', hasSalesAccess);
+    await prefs.setInt('empSect', empSect);
   }
 
   Future<int?> getEmpCode() async {
@@ -80,5 +84,10 @@ class PreferencesHelper {
   Future<String?> getPoType() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('poType');
+  }
+
+  Future<int?> getEmpSect() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt('empSect');
   }
 }
