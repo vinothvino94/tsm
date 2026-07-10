@@ -358,29 +358,43 @@ class _ViewChecklistScreenState extends State<ViewChecklistScreen> {
   }
 
   List<MapEntry<int, List<SalesChecklistModel>>> _getFilteredGroupedList() {
-    var entries = _groupedEntries.entries.toList();
+    final groupedList = _groupedEntries.entries.toList();
 
-    // Existing search filter (by CHKLNO) — keep whatever you already have here
-    if (_searchQuery.isNotEmpty) {
-      entries = entries
-          .where((e) => e.key.toString().contains(_searchQuery))
-          .toList();
-    }
+    return groupedList.where((group) {
+      final tsNo = group.key;
+      final entries = group.value;
 
-    // New: status filter by CHKAPPSTATUS
-    if (_selectedStatusFilter != 'All') {
-      entries = entries.where((e) {
-        final status = e.value.isNotEmpty ? e.value.first.chkappstatus : null;
-        if (_selectedStatusFilter == 'Approved') {
-          return status == 'Y';
-        } else {
-          // Pending = anything not 'Y' (covers null, 'N', etc.)
-          return status != 'Y';
+      if (entries.isEmpty) return false;
+
+      final firstEntry = entries.first;
+
+      // Search filter
+      if (_searchQuery.isNotEmpty) {
+        final query = _searchQuery.toLowerCase();
+
+        final matches = tsNo.toString().contains(query) ||
+            (firstEntry.clientname ?? '').toLowerCase().contains(query) ||
+            (firstEntry.enqidname ?? '').toLowerCase().contains(query) ||
+            (firstEntry.adduser?.toString() ?? '').contains(query);
+
+        if (!matches) return false;
+      }
+
+      // Status filter
+      if (_selectedStatusFilter != 'All') {
+        final status = firstEntry.chkappstatus;
+
+        if (_selectedStatusFilter == 'Approved' && status != 'Y') {
+          return false;
         }
-      }).toList();
-    }
 
-    return entries;
+        if (_selectedStatusFilter == 'Pending' && status == 'Y') {
+          return false;
+        }
+      }
+
+      return true;
+    }).toList();
   }
 
   Widget _buildChecklistCard(

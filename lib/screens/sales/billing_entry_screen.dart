@@ -2766,7 +2766,7 @@ class _BillingEntryScreenState extends State<BillingEntryScreen> {
                             ),
                           ),
                           title: Text(item.stageName ?? '-'),
-                          trailing: Text('${item.stagePer ?? '0'}%'),
+                          trailing: Text('${item.stagePer ?? '0'}'),
                         );
                       },
                     ),

@@ -752,7 +752,7 @@ class _OverAllSummaryScreenState extends State<OverAllSummaryScreen> {
           final item = designList[i];
           return [
             (i + 1).toString(),
-            item.projectName ?? '',
+            '${item.projectId} - ${item.projectName ?? ''}',
             indianFormat.format(item.salesQnty ?? 0),
             indianFormat.format(item.designQnty ?? 0),
           ];
@@ -769,7 +769,7 @@ class _OverAllSummaryScreenState extends State<OverAllSummaryScreen> {
           final item = pcList[i];
           return [
             (i + 1).toString(),
-            item.projectName ?? '',
+            '${item.projectId} - ${item.projectName ?? ''}',
             indianFormat.format(item.salesQnty ?? 0),
             indianFormat.format(item.pcQnty ?? 0),
           ];
@@ -834,14 +834,19 @@ class _OverAllSummaryScreenState extends State<OverAllSummaryScreen> {
             children: row.asMap().entries.map((e) {
               final colIndex = e.key;
               final value = e.value;
-              final align = colIndex == 0
-                  ? pw.TextAlign.center
-                  : (colIndex == 1 ||
-                          (colIndex == 2 &&
-                              (selectedModule == 'Design' ||
-                                  selectedModule == 'Project Control')))
-                      ? pw.TextAlign.left
-                      : pw.TextAlign.right;
+              final align;
+
+              if (colIndex == 0) {
+                align = pw.TextAlign.center; // S.No
+              } else if (colIndex == 1) {
+                align = pw.TextAlign.left; // Project Name
+              } else if ((selectedModule == 'Design' ||
+                      selectedModule == 'Project Control') &&
+                  (colIndex == 2 || colIndex == 3)) {
+                align = pw.TextAlign.center; // Sales & Design/PC Qty
+              } else {
+                align = pw.TextAlign.right; // Billing report numeric columns
+              }
 
               return pw.Padding(
                 padding: const pw.EdgeInsets.all(6),
@@ -1103,7 +1108,7 @@ class _OverAllSummaryScreenState extends State<OverAllSummaryScreen> {
             DataCell(Text('${index + 1}')),
             DataCell(
               _ProjectNameCell(
-                projectName: item.projectName ?? '',
+                projectName: '${item.projectId} - ${item.projectName ?? ''}',
                 onTap: () {
                   // ── Look up real customer name from already-loaded customerList ────
                   final matchedCustomer = customerList.firstWhere(
@@ -1177,7 +1182,7 @@ class _OverAllSummaryScreenState extends State<OverAllSummaryScreen> {
             DataCell(Text('${index + 1}')),
             DataCell(
               _ProjectNameCell(
-                projectName: item.projectName ?? '',
+                projectName: '${item.projectId} - ${item.projectName ?? ''}',
                 onTap: () {
                   // ── Look up real customer name from already-loaded customerList ────
                   final matchedCustomer = customerList.firstWhere(

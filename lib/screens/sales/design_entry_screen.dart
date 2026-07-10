@@ -184,6 +184,29 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
                     false); // fine — unrelated to grid rebuild
               },
             ),
+          if (!isViewOnly)
+            IconButton(
+              icon: const Icon(Icons.delete_outline),
+              tooltip: 'Delete Row',
+              onPressed: () {
+                if (_salesStateManager == null ||
+                    _salesStateManager!.currentRowIdx == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please select a row to delete.'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                  return;
+                }
+
+                final rowIdx = _salesStateManager!.currentRowIdx!;
+                final row = _salesStateManager!.refRows[rowIdx];
+
+                _salesStateManager!.removeRows([row]);
+                deleteRow(rowIdx);
+              },
+            ),
           if (_showDownloadButton)
             IconButton(
               icon: const Icon(Icons.download),
@@ -651,6 +674,15 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
         ),
       ),
     );
+  }
+
+  void deleteRow(int rowIndex) {
+    setState(() {
+      if (_salesStateManager != null) {
+        _salesGridRows = _salesStateManager!
+            .rows; // ← sync local state from grid, not manual removeAt
+      }
+    });
   }
 
   Future<void> _loadElementMaster() async {
@@ -1256,12 +1288,23 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
             .join(',');
         final elementUnits =
             rowsInGroup.map((r) => r.cells['unit']?.value ?? '').join(',');
-        final elementTotals = rowsInGroup
-            .map((r) => r.cells['totalQty']?.value?.toString() ?? '0')
-            .join(',');
-        final designTotals = rowsInGroup
-            .map((r) => r.cells['designTotal']?.value?.toString() ?? '0')
-            .join(',');
+
+        final elementTotals = rowsInGroup.map((r) {
+          final val = r.cells['totalQty']?.value;
+          if (val == null) return '0';
+          final numVal = (val as num).toDouble();
+          return numVal == numVal.truncate()
+              ? numVal.truncate().toString()
+              : numVal.toString();
+        }).join(',');
+        final designTotals = rowsInGroup.map((r) {
+          final val = r.cells['designTotal']?.value;
+          if (val == null) return '0';
+          final numVal = (val as num).toDouble();
+          return numVal == numVal.truncate()
+              ? numVal.truncate().toString()
+              : numVal.toString();
+        }).join(',');
         final remarksList = rowsInGroup
             .map((r) => r.cells['remarks']?.value?.toString() ?? '')
             .join(',');
@@ -2086,7 +2129,7 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
                                     pw.Expanded(
                                       child: pw.Text(
                                         customerName.isNotEmpty
-                                            ? customerName
+                                            ? '$selectedCustomerId - $customerName'
                                             : '-',
                                         style: const pw.TextStyle(fontSize: 12),
                                       ),
@@ -2134,7 +2177,9 @@ class _DesignEntryScreenState extends State<DesignEntryScreen> {
                               ),
                               pw.Expanded(
                                 child: pw.Text(
-                                    projectName.isNotEmpty ? projectName : '-',
+                                    projectName.isNotEmpty
+                                        ? '$selectedProjectId - $projectName'
+                                        : '-',
                                     style: const pw.TextStyle(fontSize: 12)),
                               ),
                             ],

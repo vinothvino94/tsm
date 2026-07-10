@@ -183,6 +183,29 @@ class _ProjectcontrolEntryScreenState extends State<ProjectcontrolEntryScreen> {
                 setState(() => _showDownloadButton = false);
               },
             ),
+          if (!isViewOnly)
+            IconButton(
+              icon: const Icon(Icons.delete_outline),
+              tooltip: 'Delete Row',
+              onPressed: () {
+                if (_pcStateManager == null ||
+                    _pcStateManager!.currentRowIdx == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please select a row to delete.'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                  return;
+                }
+
+                final rowIdx = _pcStateManager!.currentRowIdx!;
+                final row = _pcStateManager!.refRows[rowIdx];
+
+                _pcStateManager!.removeRows([row]);
+                deleteRow(rowIdx);
+              },
+            ),
           if (_showDownloadButton)
             IconButton(
               icon: const Icon(Icons.download),
@@ -648,6 +671,15 @@ class _ProjectcontrolEntryScreenState extends State<ProjectcontrolEntryScreen> {
         ),
       ),
     );
+  }
+
+  void deleteRow(int rowIndex) {
+    setState(() {
+      if (_pcStateManager != null) {
+        _pcGridRows = _pcStateManager!
+            .rows; // ← sync local state from grid, not manual removeAt
+      }
+    });
   }
 
   Future<void> _loadUserDetails() async {
@@ -1227,13 +1259,24 @@ class _ProjectcontrolEntryScreenState extends State<ProjectcontrolEntryScreen> {
             .map((r) => r.cells['description']?.value ?? '')
             .join(',');
 
-        final sTotal = rowsInGroup
-            .map((r) => r.cells['salesQty']?.value?.toString() ?? '0')
-            .join(',');
+        final sTotal = rowsInGroup.map((r) {
+          final val = r.cells['salesQty']?.value;
+          if (val == null) return '0';
+          final numVal = (val as num).toDouble();
+          // ✅ Whole numbers → no decimal (e.g. 10.0 → "10"), matches DB's clean format
+          return numVal == numVal.truncate()
+              ? numVal.truncate().toString()
+              : numVal.toString();
+        }).join(',');
 
-        final pcTotal = rowsInGroup
-            .map((r) => r.cells['projectcontrolqnty']?.value?.toString() ?? '0')
-            .join(',');
+        final pcTotal = rowsInGroup.map((r) {
+          final val = r.cells['projectcontrolqnty']?.value;
+          if (val == null) return '0';
+          final numVal = (val as num).toDouble();
+          return numVal == numVal.truncate()
+              ? numVal.truncate().toString()
+              : numVal.toString();
+        }).join(',');
 
         final remarks = rowsInGroup
             .map((r) => r.cells['remarks']?.value?.toString() ?? '')
@@ -1989,7 +2032,7 @@ class _ProjectcontrolEntryScreenState extends State<ProjectcontrolEntryScreen> {
                                     pw.Expanded(
                                       child: pw.Text(
                                         customerName.isNotEmpty
-                                            ? customerName
+                                            ? '$selectedCustomerId - $customerName'
                                             : '-',
                                         style: const pw.TextStyle(fontSize: 12),
                                       ),
@@ -2037,7 +2080,9 @@ class _ProjectcontrolEntryScreenState extends State<ProjectcontrolEntryScreen> {
                               ),
                               pw.Expanded(
                                 child: pw.Text(
-                                    projectName.isNotEmpty ? projectName : '-',
+                                    projectName.isNotEmpty
+                                        ? '$selectedProjectId - $projectName'
+                                        : '-',
                                     style: const pw.TextStyle(fontSize: 12)),
                               ),
                             ],

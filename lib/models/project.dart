@@ -637,6 +637,7 @@ class SalesChecklistModel {
   String? deleted;
 
   int? adduser;
+
   DateTime? adddate;
 
   int? edituser;

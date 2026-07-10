@@ -354,7 +354,7 @@ class _EntryChecklistScreenState extends State<EntryChecklistScreen> {
     loadSalesDetails();
     loadCustomers();
     labourcompSelections = {
-      for (var item in labourcompsigned) item: true,
+      for (var item in labourcompsigned) item: false,
     };
     _loadUserDetails();
     if (widget.checklistData != null) {
@@ -4349,13 +4349,10 @@ class _EntryChecklistScreenState extends State<EntryChecklistScreen> {
     }
   }
 
-  String get selectedLabourCompString {
-    final selected = labourcompSelections.entries
-        .where((e) => e.value)
-        .map((e) => e.key)
-        .toList();
-    return selected.join(', ');
-  }
+  String get selectedLabourCompString => labourcompSelections.entries
+      .where((e) => e.value)
+      .map((e) => e.key)
+      .join('|');
 
   Future<void> insertSalesChecklist() async {
     try {
@@ -4949,11 +4946,33 @@ class _EntryChecklistScreenState extends State<EntryChecklistScreen> {
       (v) => selectedjointreq = v,
       jointreqController,
     );
+    // Labour compliance including insurance
+    if (data.labcomins != null && data.labcomins!.isNotEmpty) {
+      final raw = data.labcomins!.trim();
+
+      if (raw.contains('|')) {
+        // ✅ New format — pipe-delimited
+        final selectedItems = raw.split('|').map((e) => e.trim()).toSet();
+        for (final status in labourcompsigned) {
+          labourcompSelections[status] = selectedItems.contains(status);
+        }
+      } else {
+        // ✅ Old format — comma-joined, options may contain embedded commas,
+        // so match by substring presence instead of splitting.
+        for (final status in labourcompsigned) {
+          labourcompSelections[status] = raw.contains(status);
+        }
+      }
+    } else {
+      for (final status in labourcompsigned) {
+        labourcompSelections[status] = false;
+      }
+    }
 
     // Legal aspects (simple dropdowns without remarks)
     forcemaj = data.forcemajeurecon;
     arbitration = data.arbitrationclause;
-    labourcomp = data.labcomins;
+
     liqdamage = data.liquidateddamages;
     stability = data.stabilitycertclause;
     grout = data.groutteemaxapp;
@@ -5361,254 +5380,3 @@ Future<io.File> _saveToFile(String name, List<int> bytes) async {
   final file = io.File('${tempDir.path}/$name');
   return await file.writeAsBytes(bytes);
 }
-
-/*Future<void> _insertSalesChecklist() async {
-    try {
-      final isEditing = widget.checklistData != null;
-
-      final requestBody = {
-        // For Update: Include CHKLNO (always include for update, don't include for insert)
-        if (isEditing) "CHKLNO": widget.checklistData?.chklno,
-
-        // For Insert: Include CLIENTNAME and PROJECTNAME
-        "CLIENTNAME": customerController.text,
-        "PROJECTNAME": siteController.text,
-
-        // Common fields for both Insert and Update
-        "VERIFIEDBY": verifiedbyController.text,
-        "REVIEWEDBY": reviewedbyController.text,
-        "SITEADDRESS": siteaddressController.text,
-        "BILLINGADDRESS": billingaddressController.text,
-        "SITEGSTNO": sitegstController.text,
-        "BILLINGGSTNO": billgstController.text,
-        "EFFECTIVEDATE": efffectiveDate != null
-            ? DateFormat('yyyy-MM-ddTHH:mm:ss').format(efffectiveDate!)
-            : null,
-        "WOVALUEINCLGST": workordervalueincludinggstController.text.isEmpty
-            ? null
-            : double.tryParse(
-                workordervalueincludinggstController.text.replaceAll(',', '')),
-        "PROJECTTENURE": tenureController.text,
-        "DEFLIABPERIOD": liabilityController.text,
-        "CONTRACTTYPE": contractController.text,
-        "BILLINGMETHOD": methodofbillingController.text,
-        "PAYMENTTERMS": billingfrequencyController.text,
-        "MILESTONES": milestonesController.text,
-        "RETENTION": retentionController.text,
-        "BGREQ": selectedbankreq,
-        "ESCDETAILS": selectedescl,
-        "TAXSTRCHANGES": selectedtax,
-        "SCOPEOFWORKSIGNED": workscope == "No"
-            ? "No - ${workscopeController.text}"
-            : (workscope == "Yes" ? "Yes - ${selectedworkscope ?? ''}" : ""),
-        "WPMETHODOLOGY": waterproofing == "No"
-            ? "No - ${waterproffingController.text}"
-            : (waterproofing == "Yes"
-                ? "Yes - ${selectedwaterproffing ?? ''}"
-                : ""),
-        "ANTITERMITEWORK": antitermite == "No"
-            ? "No - ${antitermiteController.text}"
-            : (antitermite == "Yes"
-                ? "Yes - ${selectedantitermite ?? ''}"
-                : ""),
-        "SITEACCESSISSUES": siteacc == "No"
-            ? "No - ${siteaccController.text}"
-            : (siteacc == "Yes" ? "Yes - ${selectedsiteacc ?? ''}" : ""),
-        "DEWATERING": dewatering == "No"
-            ? "No - ${dewateringController.text}"
-            : (dewatering == "Yes" ? "Yes - ${selecteddewatering ?? ''}" : ""),
-        "ELECTRICITYWATER": electricitywater == "No"
-            ? "No - ${electricitywaterController.text}"
-            : (electricitywater == "Yes"
-                ? "Yes - ${selectedelectricitywater ?? ''}"
-                : ""),
-        "STEELCEMENTBRANDS": steelcement == "No"
-            ? "No - ${steelcementController.text}"
-            : (steelcement == "Yes"
-                ? "Yes - ${selectedsteelcement ?? ''}"
-                : ""),
-        "NONTENITEMSMAR": tendermargin == "No"
-            ? "No - ${tendermarginController.text}"
-            : (tendermargin == "Yes"
-                ? "Yes - ${selectedtendermargin ?? ''}"
-                : ""),
-        "SOILEXCDETAILS": soil == "No"
-            ? "No - ${soilController.text}"
-            : (soil == "Yes" ? "Yes - ${selectedsoil ?? ''}" : ""),
-        "BUILDINGAPP": statapproval == "No"
-            ? "No - ${statapprovalController.text}"
-            : (statapproval == "Yes"
-                ? "Yes - ${selectedstatapproval ?? ''}"
-                : ""),
-        "SOILINV": soilsurvey == "No"
-            ? "No - ${soilsurveyController.text}"
-            : (soilsurvey == "Yes" ? "Yes - ${selectedsoilsurvey ?? ''}" : ""),
-        "BARRICATION": barrication == "No"
-            ? "No - ${barricationController.text}"
-            : (barrication == "Yes"
-                ? "Yes - ${selectedbarrication ?? ''}"
-                : ""),
-        "TREECUTTINGDEM": treecutting == "No"
-            ? "No - ${treecuttingController.text}"
-            : (treecutting == "Yes"
-                ? "Yes - ${selectedtreecutting ?? ''}"
-                : ""),
-        "LABOURACCOM": labouracc == "No"
-            ? "No - ${labouraccController.text}"
-            : (labouracc == "Yes" ? "Yes - ${selectedlabouracc ?? ''}" : ""),
-        "BRICKWORK": brickwork == "No"
-            ? "No - ${brickworkController.text}"
-            : (brickwork == "Yes" ? "Yes - ${selectedbrickwork ?? ''}" : ""),
-        "SITESECURITY": sitesec == "No"
-            ? "No - ${sitesecController.text}"
-            : (sitesec == "Yes" ? "Yes - ${selectedsitesec ?? ''}" : ""),
-        "LIGHTINGARR": lightarr == "No"
-            ? "No - ${lightarrController.text}"
-            : (lightarr == "Yes" ? "Yes - ${selectedlightarr ?? ''}" : ""),
-        "FORCEMAJEURECON": forcemaj,
-        "ARBITRATIONCLAUSE": arbitration,
-        "LABCOMINS": labourcomp,
-        "LIQUIDATEDDAMAGES": liqdamage,
-        "STABILITYCERTCLAUSE": stability,
-        "GROUTTEEMAXAPP": grout,
-        "EXJOINTREQ": jointreq == "No"
-            ? "No - ${jointreqController.text}"
-            : (jointreq == "Yes" ? "Yes - ${selectedjointreq ?? ''}" : ""),
-        "IDLECHARGES": idlecharg,
-        "THIRDPARTYTESTS": thirdpartytest,
-        "ADDUSER": empCode,
-        "FILES": _buildFilesList(),
-        "REMOVEDFILES":
-            _removedFiles.isNotEmpty ? _removedFiles.join(",") : null,
-      };
-
-      // Remove any null values from requestBody
-      final cleanedRequestBody = Map.from(requestBody)
-        ..removeWhere(
-            (key, value) => value == null || value.toString().isEmpty);
-
-      // Use the unified SaveSalesChecklist endpoint
-      final apiEndpoint = 'SaveSalesChecklist';
-
-      print("API URL : ${ApiUtils.getUri(apiEndpoint)}");
-      print("REQUEST BODY : ${jsonEncode(cleanedRequestBody)}");
-
-      final response = await http.post(
-        ApiUtils.getUri(apiEndpoint),
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: jsonEncode(cleanedRequestBody),
-      );
-
-      print("STATUS CODE : ${response.statusCode}");
-      print("RESPONSE BODY : ${response.body}");
-
-      // Check if response is valid JSON
-      if (response.body.trim().startsWith('<!DOCTYPE') ||
-          response.body.trim().startsWith('<html')) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Server error occurred. Please try again later.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
-      }
-
-      final data = jsonDecode(response.body);
-
-      if (data['Success'] == true) {
-        print("${isEditing ? 'UPDATE' : 'INSERT'} SUCCESS");
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(data['Message']),
-            backgroundColor: Colors.green,
-          ),
-        );
-        // ✅ Clear local states
-        _removedFiles.clear();
-        _attachedFiles.clear();
-
-        // ✅ Refresh the data by calling the callback or reloading from API
-        if (widget.onDataSaved != null) {
-          widget.onDataSaved!();
-        }
-
-        // ✅ For edit mode, update the local checklistData with new file list
-        if (isEditing && widget.checklistData != null) {
-          await _refreshChecklistData(widget.checklistData!.chklno);
-        }
-        if (!isEditing) {
-          clearAllFields();
-        }
-        Navigator.pop(context, true); // Return true to indicate data was saved
-      } else {
-        print("${isEditing ? 'UPDATE' : 'INSERT'} FAILED");
-        print("ERROR MESSAGE : ${data['Message']}");
-
-        String errorMessage = "";
-
-        if (data['Message'] is List) {
-          errorMessage = (data['Message'] as List).join("\n");
-        } else {
-          errorMessage = data['Message'].toString();
-        }
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(errorMessage),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      }
-    } catch (e, stackTrace) {
-      print("EXCEPTION ERROR : $e");
-      print("STACK TRACE : $stackTrace");
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString()),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-Future<void> _refreshChecklistData(int? chklno) async {
-  if (chklno == null) return; // Guard clause
-
-  try {
-    final response = await http.post(
-      ApiUtils.getUri('GetSalesChecklist'),
-      body: jsonEncode({"CHKLNO": chklno}),
-    );
-
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      if (data['Success'] == true) {
-        final updatedData = SalesChecklistModel.fromJson(data['Data']);
-
-        // Update the existing checklistData reference
-        widget.checklistData?.chkfname = updatedData.chkfname;
-        widget.checklistData?.chkftype = updatedData.chkftype;
-        widget.checklistData?.chkfcount = updatedData.chkfcount;
-
-        // Update local _existingFiles
-        if (updatedData.chkfname != null &&
-            updatedData.chkfname!.isNotEmpty) {
-          _existingFiles =
-              updatedData.chkfname!.split(',').map((e) => e.trim()).toList();
-        } else {
-          _existingFiles = [];
-        }
-
-        setState(() {});
-      }
-    }
-  } catch (e) {
-    debugPrint("Error refreshing checklist data: $e");
-  }
-}*/

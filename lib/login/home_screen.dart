@@ -732,7 +732,7 @@ class _HomeScreenState extends State<HomeScreen>
           children: [
             _buildHeader(),
             const SizedBox(height: 20),
-            if (isSuperAdmin || isTeamLead)
+            if ((isSuperAdmin || isTeamLead) && empCode != 15000)
               Center(
                 child: ElevatedButton.icon(
                   icon: const Icon(Icons.pie_chart, color: Colors.white),
